@@ -1,7 +1,4 @@
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from 'obsidian';
-import * as https from 'https';
-import * as http from 'http';
-import { URL as NodeURL } from 'url';
 
 export class ConfluenceApiError extends Error {
 	constructor(public status: number, public code: ConfluenceErrorCode, message: string, public details?: string) {
@@ -129,28 +126,15 @@ export class ConfluenceApi {
 				},
 			},
 		});
-		// Obsidian requestUrl can trigger Confluence Server XSRF false positives for POST JSON bodies.
-		// Send POST through Node https, matching multipart uploads. PUT via requestUrl remains fine.
-		const bodyBuf = Buffer.from(body, 'utf8');
 		const url = `${this.baseUrl}/rest/api/content`;
-		const { status, text } = await nodeHttpsRequest({
-			url,
+		const res = await this.request({
 			method: 'POST',
-			headers: {
-				Authorization: this.authHeader,
-				Accept: 'application/json',
-				'X-Atlassian-Token': 'no-check',
-				'Content-Type': 'application/json',
-				'Content-Length': String(bodyBuf.length),
-			},
-			body: bodyBuf,
+			url,
+			contentType: 'application/json',
+			body,
+			extraHeaders: { 'X-Atlassian-Token': 'no-check' },
 		});
-		if (status < 200 || status >= 300) {
-			const code = classifyError(status);
-			const details = truncate(text, 500);
-			throw new ConfluenceApiError(status, code, buildErrorMessage('POST', url, status, details), details);
-		}
-		const data = parseJsonObject(text, 'Confluence create page response');
+		const data = parseJsonObject(res.text, 'Confluence create page response');
 		const links = readOptionalObject(data, '_links');
 		const id = readRequiredString(data, 'id', 'Confluence create page response');
 		const base = links ? readOptionalString(links, 'base') ?? this.baseUrl : this.baseUrl;
@@ -238,33 +222,15 @@ export class ConfluenceApi {
 	}
 
 	private async uploadMultipart(url: string, filename: string, data: ArrayBuffer, mimeType: string): Promise<RequestUrlResponse> {
-		// Multipart upload does not use fetch or Obsidian requestUrl because Confluence Server can still reject binary bodies as XSRF.
-		// Use Electron/Node https directly. This FormData serialization format has been validated against Confluence.
-		const fd = new FormData();
-		fd.append('file', new Blob([data], { type: mimeType }), filename);
-		const tmp = new Request('http://placeholder.invalid/', { method: 'POST', body: fd });
-		const contentType = tmp.headers.get('Content-Type') ?? 'multipart/form-data';
-		const bodyBuf = Buffer.from(await tmp.arrayBuffer());
+		const multipart = createMultipartBody('file', filename, data, mimeType);
 
-		const { status, text } = await nodeHttpsRequest({
-			url,
+		return this.request({
 			method: 'POST',
-			headers: {
-				Authorization: this.authHeader,
-				Accept: 'application/json',
-				'X-Atlassian-Token': 'no-check',
-				'Content-Type': contentType,
-				'Content-Length': String(bodyBuf.length),
-			},
-			body: bodyBuf,
+			url,
+			contentType: `multipart/form-data; boundary=${multipart.boundary}`,
+			body: multipart.body,
+			extraHeaders: { 'X-Atlassian-Token': 'no-check' },
 		});
-
-		if (status >= 200 && status < 300) {
-			return { status, headers: {}, arrayBuffer: new ArrayBuffer(0), json: null, text };
-		}
-		const code = classifyError(status);
-		const details = truncate(text, 500);
-		throw new ConfluenceApiError(status, code, buildErrorMessage('POST', url, status, details), details);
 	}
 
 	private async request(opts: {
@@ -376,40 +342,60 @@ function isJsonRecord(value: unknown): value is JsonRecord {
 	return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
-/**
- * Sends requests directly through Electron/Node https/http to avoid browser CORS and requestUrl binary-body handling.
- */
-function nodeHttpsRequest(opts: {
-	url: string;
-	method: string;
-	headers: Record<string, string>;
-	body: Buffer;
-}): Promise<{ status: number; text: string }> {
-	return new Promise((resolve, reject) => {
-		const parsed = new NodeURL(opts.url);
-		const lib = parsed.protocol === 'http:' ? http : https;
-		const req = lib.request({
-			protocol: parsed.protocol,
-			hostname: parsed.hostname,
-			port: parsed.port || (parsed.protocol === 'http:' ? 80 : 443),
-			path: parsed.pathname + parsed.search,
-			method: opts.method,
-			headers: opts.headers,
-		}, (res) => {
-			const chunks: Buffer[] = [];
-			res.on('data', (c: Buffer) => chunks.push(c));
-			res.on('end', () => {
-				const text = Buffer.concat(chunks).toString('utf8');
-				resolve({ status: res.statusCode ?? 0, text });
-			});
-		});
-		req.on('error', (e: Error) => reject(e));
-		req.write(opts.body);
-		req.end();
-	});
+interface MultipartBody {
+	boundary: string;
+	body: ArrayBuffer;
 }
 
-/** UTF-8 safe Base64 encoding. Electron provides btoa, but browser btoa only accepts latin1 input. */
+function createMultipartBody(fieldName: string, filename: string, data: ArrayBuffer, mimeType: string): MultipartBody {
+	const boundary = `----confluence-page-publisher-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+	const header = [
+		`--${boundary}`,
+		`Content-Disposition: form-data; name="${escapeMultipartHeaderValue(fieldName)}"; filename="${escapeMultipartHeaderValue(filename)}"`,
+		`Content-Type: ${mimeType}`,
+		'',
+		'',
+	].join('\r\n');
+	const footer = `\r\n--${boundary}--\r\n`;
+
+	return {
+		boundary,
+		body: concatBytes([encodeUtf8Bytes(header), new Uint8Array(data), encodeUtf8Bytes(footer)]),
+	};
+}
+
+function escapeMultipartHeaderValue(value: string): string {
+	return value.replace(/[\r\n]/g, '_').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function concatBytes(parts: Uint8Array[]): ArrayBuffer {
+	const totalLength = parts.reduce((sum, part) => sum + part.byteLength, 0);
+	const output = new Uint8Array(totalLength);
+	let offset = 0;
+
+	for (const part of parts) {
+		output.set(part, offset);
+		offset += part.byteLength;
+	}
+
+	return output.buffer;
+}
+
+function encodeUtf8Bytes(input: string): Uint8Array {
+	return new TextEncoder().encode(input);
+}
+
+/** UTF-8 safe Base64 encoding. Browser btoa only accepts latin1 input, so encode to UTF-8 bytes first. */
 function encodeBase64Utf8(input: string): string {
-	return Buffer.from(input, 'utf8').toString('base64');
+	return btoa(bytesToBinaryString(encodeUtf8Bytes(input)));
+}
+
+function bytesToBinaryString(bytes: Uint8Array): string {
+	const chunkSize = 0x8000;
+	let binary = '';
+	for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+		const chunk = bytes.subarray(offset, offset + chunkSize);
+		binary += String.fromCharCode(...chunk);
+	}
+	return binary;
 }

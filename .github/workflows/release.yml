@@ -1,0 +1,259 @@
+name: Release Obsidian plugin
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  meta:
+    name: Metadata
+    runs-on: ubuntu-22.04
+    outputs:
+      release_version: ${{ steps.meta.outputs.release_version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+      release_line: ${{ steps.meta.outputs.release_line }}
+
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        run: |
+          set -euo pipefail
+
+          RELEASE_VERSION="${{ github.event.release.tag_name }}"
+
+          if [[ ! "${RELEASE_VERSION}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(-(rc|beta)\.[0-9]+)?$ ]]; then
+            echo "Invalid release tag: ${RELEASE_VERSION}"
+            echo "Expected one of:"
+            echo "  1.0.0"
+            echo "  1.0.0-rc.0"
+            echo "  1.0.0-beta.0"
+            exit 1
+          fi
+
+          RELEASE_LINE="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+
+          if [[ "${RELEASE_VERSION}" == *-* || "${{ github.event.release.prerelease }}" == "true" ]]; then
+            PRERELEASE="true"
+          else
+            PRERELEASE="false"
+          fi
+
+          echo "release_version=${RELEASE_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_line=${RELEASE_LINE}" >> "$GITHUB_OUTPUT"
+          echo "prerelease=${PRERELEASE}" >> "$GITHUB_OUTPUT"
+
+          echo "RELEASE_VERSION=${RELEASE_VERSION}"
+          echo "RELEASE_LINE=${RELEASE_LINE}"
+          echo "PRERELEASE=${PRERELEASE}"
+
+  upload-release-assets:
+    name: Upload Release Assets
+    runs-on: ubuntu-22.04
+    needs:
+      - meta
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ needs.meta.outputs.release_version }}
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build plugin
+        run: bun run build
+
+      - name: Verify release assets
+        run: |
+          set -euo pipefail
+
+          test -f dist/main.js
+          test -f dist/manifest.json
+          test -f dist/styles.css
+
+          DIST_MANIFEST_VERSION="$(node -p "require('./dist/manifest.json').version")"
+
+          if [[ "${{ needs.meta.outputs.release_version }}" != "${DIST_MANIFEST_VERSION}" ]]; then
+            echo "Tag (${{ needs.meta.outputs.release_version }}) does not match dist/manifest.json version (${DIST_MANIFEST_VERSION})"
+            exit 1
+          fi
+
+      - name: Generate artifact attestations
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            dist/main.js
+            dist/manifest.json
+            dist/styles.css
+
+      - name: Upload release assets
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ needs.meta.outputs.release_version }}
+          file: dist/{main.js,manifest.json,styles.css}
+          file_glob: true
+          overwrite: true
+
+  update-release-branch:
+    name: Create or Update Release Branch
+    needs:
+      - meta
+      - upload-release-assets
+    if: ${{ needs.meta.outputs.prerelease != 'true' }}
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release-branch-${{ github.repository }}-${{ needs.meta.outputs.release_line }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Create or update release branch
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const owner = context.repo.owner
+            const repo = context.repo.repo
+
+            const tagName = context.payload.release.tag_name
+            const version = tagName.replace(/^v/, "")
+            const currentVersion = parseStableVersion(tagName)
+
+            if (!currentVersion) {
+              core.setFailed(`release branch can only be updated from stable tags: ${tagName}`)
+              return
+            }
+
+            const releaseLine = `${currentVersion.major}.${currentVersion.minor}`
+            const releaseBranch = `release/${releaseLine}`
+
+            function parseStableVersion(tag) {
+              const version = tag.replace(/^v/, "")
+              const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version)
+
+              if (!match) {
+                return null
+              }
+
+              return {
+                major: Number(match[1]),
+                minor: Number(match[2]),
+                patch: Number(match[3]),
+              }
+            }
+
+            function compareVersions(leftVersion, rightVersion) {
+              if (leftVersion.major !== rightVersion.major) {
+                return leftVersion.major - rightVersion.major
+              }
+
+              if (leftVersion.minor !== rightVersion.minor) {
+                return leftVersion.minor - rightVersion.minor
+              }
+
+              return leftVersion.patch - rightVersion.patch
+            }
+
+            const releases = await github.paginate(github.rest.repos.listReleases, {
+              owner,
+              repo,
+              per_page: 100,
+            })
+
+            const stableLineReleases = releases
+              .filter((release) => !release.draft && !release.prerelease)
+              .map((release) => ({
+                tagName: release.tag_name,
+                parsed: parseStableVersion(release.tag_name),
+              }))
+              .filter((release) => {
+                return (
+                  release.parsed !== null &&
+                  release.parsed.major === currentVersion.major &&
+                  release.parsed.minor === currentVersion.minor
+                )
+              })
+              .sort((leftRelease, rightRelease) => {
+                return compareVersions(rightRelease.parsed, leftRelease.parsed)
+              })
+
+            if (stableLineReleases.length === 0) {
+              core.setFailed(`no stable releases found for ${releaseLine}`)
+              return
+            }
+
+            const latestTagForLine = stableLineReleases[0].tagName
+
+            core.info(`current tag: ${tagName}`)
+            core.info(`latest stable tag for ${releaseLine}: ${latestTagForLine}`)
+
+            if (tagName !== latestTagForLine) {
+              core.notice(
+                `skip updating ${releaseBranch}: ${tagName} is not the latest stable tag for ${releaseLine}`
+              )
+              return
+            }
+
+            const tagRef = await github.rest.git.getRef({
+              owner,
+              repo,
+              ref: `tags/${tagName}`,
+            })
+
+            let sha = tagRef.data.object.sha
+
+            if (tagRef.data.object.type === "tag") {
+              const tagObject = await github.rest.git.getTag({
+                owner,
+                repo,
+                tag_sha: sha,
+              })
+
+              sha = tagObject.data.object.sha
+            }
+
+            try {
+              await github.rest.git.getRef({
+                owner,
+                repo,
+                ref: `heads/${releaseBranch}`,
+              })
+
+              await github.rest.git.updateRef({
+                owner,
+                repo,
+                ref: `heads/${releaseBranch}`,
+                sha,
+                force: true,
+              })
+
+              core.info(`updated ${releaseBranch} -> ${sha}`)
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error
+              }
+
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: `refs/heads/${releaseBranch}`,
+                sha,
+              })
+
+              core.info(`created ${releaseBranch} -> ${sha}`)
+            }

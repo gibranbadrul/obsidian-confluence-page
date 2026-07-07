@@ -1,0 +1,10 @@
+{
+	"id": "confluence-page-publisher",
+	"name": "Confluence Page Publisher",
+	"version": "1.0.0",
+	"minAppVersion": "1.4.4",
+	"description": "Publish notes to Confluence pages using frontmatter bindings and custom Markdown conversion.",
+	"author": "gibranbadrul",
+	"authorUrl": "https://github.com/gibranbadrul",
+	"isDesktopOnly": true
+}

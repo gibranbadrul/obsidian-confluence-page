@@ -1,0 +1,62 @@
+import { type App, Modal, Notice, Setting, type TFile } from 'obsidian';
+import { parsePageIdFromUrl } from '../confluence/urlParser';
+import { t } from '../i18n';
+
+export interface CreateBoundNoteResult {
+	file: TFile;
+}
+
+/** Modal: enter note path and Confluence URL, then create the note with template frontmatter. */
+export class CreateBoundNoteModal extends Modal {
+	private notePath: string;
+	private url: string = '';
+
+	constructor(
+		app: App,
+		defaultFolder: string,
+		private onCreate: (path: string, url: string) => Promise<TFile>,
+	) {
+		super(app);
+		const ts = new Date().toISOString().slice(0, 10);
+		this.notePath = (defaultFolder ? defaultFolder + '/' : '') + `confluence-note-${ts}.md`;
+	}
+
+	onOpen(): void {
+		this.titleEl.setText(t('modal.createBoundNote.title'));
+
+		const wrap = this.contentEl.createDiv({ cls: 'confluence-publisher-create-form' });
+
+		new Setting(wrap)
+			.setName(t('modal.createBoundNote.notePathName'))
+			.setDesc(t('modal.createBoundNote.notePathDesc'))
+			.addText((tx) => tx.setValue(this.notePath).onChange((v) => { this.notePath = v.trim(); }));
+
+		new Setting(wrap)
+			.setName(t('modal.createBoundNote.urlName'))
+			.setDesc(t('modal.createBoundNote.urlDesc'))
+			.addText((tx) => tx
+				.setPlaceholder('https://example.atlassian.net/wiki/spaces/54321/pages/12345/Title')
+				.onChange((v) => { this.url = v.trim(); }));
+
+		new Setting(wrap)
+			.addButton((btn) => btn.setButtonText(t('modal.createBoundNote.cancel')).onClick(() => this.close()))
+			.addButton((btn) => btn.setButtonText(t('modal.createBoundNote.create')).setCta().onClick(async () => {
+				if (!this.notePath) { new Notice(t('notice.pathRequired')); return; }
+				if (!this.url) { new Notice(t('notice.urlRequired')); return; }
+				if (!parsePageIdFromUrl(this.url)) {
+					new Notice(t('notice.urlCannotParsePageId'));
+					return;
+				}
+				try {
+					await this.onCreate(this.notePath.endsWith('.md') ? this.notePath : this.notePath + '.md', this.url);
+					this.close();
+				} catch (e) {
+					new Notice(t('notice.createFailed', { error: e instanceof Error ? e.message : String(e) }));
+				}
+			}));
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}

@@ -1,6 +1,6 @@
 {
 	"name": "confluence-page-publisher",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"description": "Publish notes to Confluence pages using frontmatter bindings and custom Markdown conversion.",
 	"main": "dist/main.js",
 	"type": "module",

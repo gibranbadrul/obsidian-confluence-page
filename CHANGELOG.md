@@ -1,10 +1,21 @@
 [![image](assets/obsidian-confluence-page-banner.png)](https://github.com/gibranbadrul/obsidian-confluence-page)
 
+## [1.0.2](https://github.com/gibranbadrul/obsidian-confluence-page/compare/1.0.1..1.0.2) - 2026-07-08
+
+### 🐛 Bug Fixes
+
+- Confluence attachment upload xsrf-compatible ([#1](<REPO>/issues/1)) - ([e2015cb](https://github.com/gibranbadrul/obsidian-confluence-page/commit/e2015cba614c6ce91ba384a80de065d5011c6cf8))
+
+
 ## [1.0.1](https://github.com/gibranbadrul/obsidian-confluence-page/compare/1.0.0..1.0.1) - 2026-07-07
 
 ### 🐛 Bug Fixes
 
 - Remove unsafe confluence api request wrapper - ([ed3a7a1](https://github.com/gibranbadrul/obsidian-confluence-page/commit/ed3a7a1fea7b4be3b3f48420b0a2d930d2ae18e6))
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Bump version to 1.0.1 - ([2d0bb09](https://github.com/gibranbadrul/obsidian-confluence-page/commit/2d0bb09b4f78dbd755fceff8a3328264d161d855))
 
 
 ## [1.0.0] - 2026-07-07

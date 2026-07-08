@@ -172,7 +172,7 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 				.setName(t('settings.templateFolder.name'))
 				.setDesc(t('settings.templateFolder.desc'))
 				.addText((tx) => tx
-					.setPlaceholder('templates')
+					.setPlaceholder('Templates')
 					.setValue(s.templateFolderPath)
 					.onChange(async (v) => {
 						s.templateFolderPath = v.trim() || 'templates';

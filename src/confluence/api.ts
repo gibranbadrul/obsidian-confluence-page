@@ -1,4 +1,5 @@
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from 'obsidian';
+import { encodeBase64Utf8 } from '../utils/base64';
 
 export class ConfluenceApiError extends Error {
 	constructor(public status: number, public code: ConfluenceErrorCode, message: string, public details?: string) {
@@ -50,17 +51,21 @@ export interface ConfluenceApiConfig {
 
 type JsonRecord = Record<string, unknown>;
 
+const ATLASSIAN_XSRF_HEADER = 'X-Atlassian-Token';
+const ATLASSIAN_XSRF_NOCHECK = 'nocheck';
+const ATLASSIAN_XSRF_NO_CHECK = 'no-check';
+
 /**
  * Confluence REST v1 client using Obsidian requestUrl where possible.
  *
  * Design notes:
- * - baseUrl is normalized without trailing slash, e.g. https://xxx.atlassian.net/wiki
+ * - baseUrl is normalized without a trailing slash, e.g. https://xxx.atlassian.net/wiki
  * - Basic Auth: Authorization: Basic base64(username:token)
  * - Errors are normalized as ConfluenceApiError with categorized codes for callers.
  */
 export class ConfluenceApi {
-	private baseUrl: string;
-	private authHeader: string;
+	private readonly baseUrl: string;
+	private readonly authHeader: string;
 
 	constructor(config: ConfluenceApiConfig) {
 		this.baseUrl = config.baseUrl.replace(/\/+$/, '');
@@ -132,7 +137,7 @@ export class ConfluenceApi {
 			url,
 			contentType: 'application/json',
 			body,
-			extraHeaders: { 'X-Atlassian-Token': 'no-check' },
+			extraHeaders: xsrfHeaders(ATLASSIAN_XSRF_NO_CHECK),
 		});
 		const data = parseJsonObject(res.text, 'Confluence create page response');
 		const links = readOptionalObject(data, '_links');
@@ -166,7 +171,7 @@ export class ConfluenceApi {
 			url: `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}`,
 			contentType: 'application/json',
 			body,
-			extraHeaders: { 'X-Atlassian-Token': 'no-check' },
+			extraHeaders: xsrfHeaders(ATLASSIAN_XSRF_NO_CHECK),
 		});
 	}
 
@@ -223,14 +228,26 @@ export class ConfluenceApi {
 
 	private async uploadMultipart(url: string, filename: string, data: ArrayBuffer, mimeType: string): Promise<RequestUrlResponse> {
 		const multipart = createMultipartBody('file', filename, data, mimeType);
-
-		return this.request({
+		const requestOpts = {
 			method: 'POST',
 			url,
 			contentType: `multipart/form-data; boundary=${multipart.boundary}`,
 			body: multipart.body,
-			extraHeaders: { 'X-Atlassian-Token': 'no-check' },
-		});
+		};
+
+		try {
+			return await this.request({
+				...requestOpts,
+				extraHeaders: xsrfHeaders(ATLASSIAN_XSRF_NOCHECK),
+			});
+		} catch (e) {
+			if (!isXsrfCheckFailed(e)) throw e;
+
+			return this.request({
+				...requestOpts,
+				extraHeaders: xsrfHeaders(ATLASSIAN_XSRF_NO_CHECK),
+			});
+		}
 	}
 
 	private async request(opts: {
@@ -243,6 +260,7 @@ export class ConfluenceApi {
 		const headers: Record<string, string> = {
 			Authorization: this.authHeader,
 			Accept: 'application/json',
+			'User-Agent': 'Obsidian.md',
 			...(opts.extraHeaders ?? {}),
 		};
 		if (opts.contentType) headers['Content-Type'] = opts.contentType;
@@ -252,6 +270,7 @@ export class ConfluenceApi {
 			url: opts.url,
 			headers,
 			body: opts.body,
+			contentType: opts.contentType,
 			throw: false,
 		};
 
@@ -342,6 +361,15 @@ function isJsonRecord(value: unknown): value is JsonRecord {
 	return !!value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function xsrfHeaders(value: string): Record<string, string> {
+	return { [ATLASSIAN_XSRF_HEADER]: value };
+}
+
+function isXsrfCheckFailed(value: unknown): boolean {
+	if (!(value instanceof ConfluenceApiError)) return false;
+	return value.status === 403 && /xsrf check failed/i.test(value.details ?? value.message);
+}
+
 interface MultipartBody {
 	boundary: string;
 	body: ArrayBuffer;
@@ -383,19 +411,4 @@ function concatBytes(parts: Uint8Array[]): ArrayBuffer {
 
 function encodeUtf8Bytes(input: string): Uint8Array {
 	return new TextEncoder().encode(input);
-}
-
-/** UTF-8 safe Base64 encoding. Browser btoa only accepts latin1 input, so encode to UTF-8 bytes first. */
-function encodeBase64Utf8(input: string): string {
-	return btoa(bytesToBinaryString(encodeUtf8Bytes(input)));
-}
-
-function bytesToBinaryString(bytes: Uint8Array): string {
-	const chunkSize = 0x8000;
-	let binary = '';
-	for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-		const chunk = bytes.subarray(offset, offset + chunkSize);
-		binary += String.fromCharCode(...chunk);
-	}
-	return binary;
 }

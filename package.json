@@ -44,6 +44,7 @@
 		"vitest": "3.2.6"
 	},
 	"dependencies": {
+		"js-base64": "^3.8.0",
 		"markdown-it": "14.3.0",
 		"obsidian": "latest"
 	}

@@ -243,17 +243,27 @@ export class ConfluenceApi {
 	/** Creates an attachment: POST /rest/api/content/{pageId}/child/attachment (multipart). */
 	async createAttachment(pageId: string, filename: string, data: ArrayBuffer, mimeType: string): Promise<AttachmentMeta> {
 		const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment`;
-		const res = await this.uploadMultipart(url, filename, data, mimeType);
+		const res = await this.uploadMultipart('POST', url, filename, data, mimeType);
 		const parsed = parseJsonObject(res.text, 'Confluence create attachment response');
 		const createdAttachment = readRecordArray(parsed, 'results')[0];
 		if (!createdAttachment) throw new ConfluenceApiError(500, 'invalid_response', 'Confluence returned an empty results array');
 		return this.createAttachmentMeta(createdAttachment, 'Confluence create attachment response');
 	}
 
+	/** Creates or updates an attachment by filename: PUT /rest/api/content/{pageId}/child/attachment (multipart). */
+	async createOrUpdateAttachment(pageId: string, filename: string, data: ArrayBuffer, mimeType: string): Promise<AttachmentMeta> {
+		const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment`;
+		const res = await this.uploadMultipart('PUT', url, filename, data, mimeType);
+		const parsed = parseJsonObject(res.text, 'Confluence create-or-update attachment response');
+		const attachment = readRecordArray(parsed, 'results')[0];
+		if (!attachment) throw new ConfluenceApiError(500, 'invalid_response', 'Confluence returned an empty results array');
+		return this.createAttachmentMeta(attachment, 'Confluence create-or-update attachment response');
+	}
+
 	/** Updates existing attachment binary content: POST /rest/api/content/{pageId}/child/attachment/{attId}/data. */
 	async updateAttachment(pageId: string, attachmentId: string, filename: string, data: ArrayBuffer, mimeType: string): Promise<AttachmentMeta> {
 		const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/child/attachment/${encodeURIComponent(attachmentId)}/data`;
-		const res = await this.uploadMultipart(url, filename, data, mimeType);
+		const res = await this.uploadMultipart('POST', url, filename, data, mimeType);
 		const parsed = parseJsonObject(res.text, 'Confluence update attachment response');
 		const version = readOptionalObject(parsed, 'version');
 
@@ -274,10 +284,10 @@ export class ConfluenceApi {
 		};
 	}
 
-	private async uploadMultipart(url: string, filename: string, data: ArrayBuffer, mimeType: string): Promise<RequestUrlResponse> {
+	private async uploadMultipart(method: 'POST' | 'PUT', url: string, filename: string, data: ArrayBuffer, mimeType: string): Promise<RequestUrlResponse> {
 		const multipart = createMultipartBody('file', filename, data, mimeType);
 		const requestOpts = {
-			method: 'POST',
+			method,
 			url,
 			contentType: `multipart/form-data; boundary=${multipart.boundary}`,
 			body: multipart.body,
@@ -446,11 +456,23 @@ function createMultipartBody(fieldName: string, filename: string, data: ArrayBuf
 		'',
 		'',
 	].join('\r\n');
+	const minorEditPart = [
+		'',
+		`--${boundary}`,
+		'Content-Disposition: form-data; name="minorEdit"',
+		'',
+		'true',
+	].join('\r\n');
 	const footer = `\r\n--${boundary}--\r\n`;
 
 	return {
 		boundary,
-		body: concatBytes([encodeUtf8Bytes(header), new Uint8Array(data), encodeUtf8Bytes(footer)]),
+		body: concatBytes([
+			encodeUtf8Bytes(header),
+			new Uint8Array(data),
+			encodeUtf8Bytes(minorEditPart),
+			encodeUtf8Bytes(footer),
+		]),
 	};
 }
 

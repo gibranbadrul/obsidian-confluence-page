@@ -139,23 +139,33 @@ export class AttachmentUploader {
 		mime: string,
 		knownAttachmentId: string | undefined,
 	): Promise<{ id: string }> {
-		// Prefer cached attachmentId and updateData; if it fails, fall back to find + create.
+		// Prefer cached attachmentId and updateData; if it fails, fall back to filename-based update.
 		if (knownAttachmentId) {
 			try {
 				const r = await this.api.updateAttachment(pageId, knownAttachmentId, filename, data, mime);
 				return { id: r.id };
-			} catch {
-				// The attachment may have been deleted in Confluence. Continue through find/create path.
+			} catch (e) {
+				this.logger.warn(`Attachment update by cached ID failed, retrying by filename: ${filename}`, errorMessage(e));
 			}
 		}
+
 		const existing = await this.api.findAttachmentByFilename(pageId, filename);
 		if (existing) {
-			const r = await this.api.updateAttachment(pageId, existing.id, filename, data, mime);
-			return { id: r.id };
+			try {
+				const r = await this.api.updateAttachment(pageId, existing.id, filename, data, mime);
+				return { id: r.id };
+			} catch (e) {
+				this.logger.warn(`Attachment update by filename failed, retrying create-or-update: ${filename}`, errorMessage(e));
+			}
 		}
-		const r = await this.api.createAttachment(pageId, filename, data, mime);
+
+		const r = await this.api.createOrUpdateAttachment(pageId, filename, data, mime);
 		return { id: r.id };
 	}
+}
+
+function errorMessage(value: unknown): string {
+	return value instanceof Error ? value.message : String(value);
 }
 
 function guessMime(filename: string): string {

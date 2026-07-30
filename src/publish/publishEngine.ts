@@ -154,7 +154,7 @@ export class PublishEngine {
 			}
 
 			const markdown = await this.deps.app.vault.cachedRead(file);
-			const contentHash = await this.converter.computeContentHash(markdown, pageTitle);
+			const contentHash = await this.converter.computeContentHash(markdown, pageTitle, path);
 			const previousAttachments = this.getPreviousAttachments(pageId, binding);
 			this.deps.logger.info(
 				`Content hash resolved: ${path}`,

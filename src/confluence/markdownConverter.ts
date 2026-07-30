@@ -1,8 +1,9 @@
-import type {App} from 'obsidian';
+import type { App } from 'obsidian';
 import MarkdownIt from 'markdown-it';
-import {type AttachmentRef} from '../types';
-import {sha1Hex} from '../utils/hash';
-import {resolveAttachmentFile} from './attachmentUploader';
+import { type AttachmentRef } from '../types';
+import { sha1Hex } from '../utils/hash';
+import { resolveAttachmentFile } from './attachmentUploader';
+import { FrontmatterFields, type Frontmatter } from '../frontmatter/handler';
 
 export interface DiagramBlock {
 	/** Source sha1 hex. Used as the cache key and filename prefix. */
@@ -21,6 +22,10 @@ export interface ExtractedReferences {
 /** markdown-it env is typed as `any`; this converter only stores a callout state flag. */
 interface CalloutEnv { __calloutOpen?: boolean }
 
+interface ObsidianPreprocessContext {
+	app: App;
+	sourcePath: string;
+}
 
 export interface ConvertContext {
 	/** filename -> successfully uploaded attachment records. Used by the image renderer. */
@@ -50,7 +55,7 @@ export class MarkdownConverter {
 
 	async extractReferences(markdown: string, sourcePath: string): Promise<ExtractedReferences> {
 		const body = prepareMarkdownForConfluence(stripFrontmatter(markdown));
-		const preprocessed = preprocessObsidianSyntax(body);
+		const preprocessed = preprocessObsidianSyntax(body, { app: this.app, sourcePath });
 
 		const attachments = this.collectAttachments(preprocessed, sourcePath);
 		const mermaid = await this.collectDiagrams(preprocessed, 'mermaid');
@@ -59,9 +64,9 @@ export class MarkdownConverter {
 		return { attachments, mermaid, plantUml };
 	}
 
-	async convert(markdown: string, _sourcePath: string, ctx: ConvertContext): Promise<string> {
+	async convert(markdown: string, sourcePath: string, ctx: ConvertContext): Promise<string> {
 		const body = prepareMarkdownForConfluence(stripFrontmatter(markdown));
-		const preprocessed = preprocessObsidianSyntax(body);
+		const preprocessed = preprocessObsidianSyntax(body, { app: this.app, sourcePath });
 
 		// Precompute each diagram fence hash. The markdown-it renderer can only look up prepared maps during rendering.
 		const fenceHashMap = await this.buildFenceHashMap(preprocessed);
@@ -73,10 +78,15 @@ export class MarkdownConverter {
 	}
 
 	/** Computes a stable content hash for publish skipping. Ignored blocks are intentionally excluded. */
-	async computeContentHash(markdown: string, pageTitle = ''): Promise<string> {
+	async computeContentHash(markdown: string, pageTitle = '', sourcePath = ''): Promise<string> {
 		const body = prepareMarkdownForConfluence(stripFrontmatter(markdown));
 		const titleFingerprint = pageTitle.trim();
-		return sha1Hex(`${body}\n\n<!-- confluence-page-title:${titleFingerprint} -->`);
+		const pageLinkFingerprint = sourcePath ? buildConfluencePageLinkFingerprint(this.app, body, sourcePath) : '';
+		return sha1Hex([
+			body,
+			`<!-- confluence-page-title:${titleFingerprint} -->`,
+			`<!-- confluence-page-links:${pageLinkFingerprint} -->`,
+		].join('\n\n'));
 	}
 
 	private collectAttachments(markdown: string, sourcePath: string): AttachmentRef[] {
@@ -256,29 +266,27 @@ function removeIgnoredConfluenceLines(markdown: string): string {
 /**
  * Performs minimal Obsidian-specific preprocessing so markdown-it can parse the note sensibly.
  * - `![[file]]` -> standard Markdown image syntax. The image renderer later turns this into `ac:image`.
- * - `[[link|alias]]` -> plain alias text.
+ * - `![[note]]` -> plain display text. Embedded notes are not Confluence page links.
+ * - `[[link|alias]]` -> Confluence page link when the target note has `confluence_url`; otherwise plain text.
  * - `> [!type] Title` -> private callout marker detected by the blockquote renderer.
  */
-function preprocessObsidianSyntax(md: string): string {
+function preprocessObsidianSyntax(md: string, ctx: ObsidianPreprocessContext): string {
 	// Mask code regions to avoid rewriting examples that contain Obsidian syntax.
 	const { masked, restore } = maskCodeRegions(md);
 	let s = masked;
 
-	// 1. ![[...]] embed -> ![alt](path)
+	// 1. ![[...]] embed -> image attachment for asset links, plain text for embedded notes.
 	s = s.replace(/!\[\[([^\]\n|\\]+)(?:\\?\|([^\]\n]*))?\]\]/g, (_full, link: string, alias: string) => {
 		const text = (alias ?? '').trim();
 		const linkpath = link.trim();
-		if (linkpath.includes('#')) {
-			return text || linkpath.split('/').pop() || linkpath;
+		if (!isLikelyAttachmentLinkpath(linkpath)) {
+			return text || displayTextFromWikilink(linkpath);
 		}
-		return `![${text}](${linkpath})`;
+		return `![${escapeMarkdownLinkText(text)}](${markdownLinkDestination(linkpath)})`;
 	});
 
-	// 2. [[link|alias]] / [[link]] -> plain text alias or link basename.
-	s = s.replace(/\[\[([^\]\n|\\]+)(?:\\?\|([^\]\n]*))?\]\]/g, (_full, link: string, alias: string) => {
-		const cleanLink = link.trim();
-		return (alias ?? '').trim() || cleanLink.split('/').pop() || cleanLink;
-	});
+	// 2. [[link|alias]] / [[link]] -> Confluence link when the target note has confluence_url.
+	s = replaceObsidianPageLinks(s, ctx);
 
 	// 3. Callout header: `> [!info] Title` -> private marker.
 	// PUA markers avoid markdown-it treats underscores as emphasis syntax.
@@ -287,6 +295,64 @@ function preprocessObsidianSyntax(md: string): string {
 	});
 
 	return restore(s);
+}
+
+function replaceObsidianPageLinks(markdown: string, ctx: ObsidianPreprocessContext): string {
+	return markdown.replace(/(^|[^!])\[\[([^\]\n|\\]+)(?:\\?\|([^\]\n]*))?\]\]/g, (_full, prefix: string, link: string, alias: string) => {
+		const linkpath = link.trim();
+		const displayText = (alias ?? '').trim() || displayTextFromWikilink(linkpath);
+		const confluenceUrl = resolveConfluenceUrlForWikilink(ctx.app, linkpath, ctx.sourcePath);
+		if (!confluenceUrl) return prefix + displayText;
+		return `${prefix}[${escapeMarkdownLinkText(displayText)}](${markdownLinkDestination(confluenceUrl)})`;
+	});
+}
+
+function buildConfluencePageLinkFingerprint(app: App, markdown: string, sourcePath: string): string {
+	const { masked } = maskCodeRegions(markdown);
+	const refs: string[] = [];
+	masked.replace(/(^|[^!])\[\[([^\]\n|\\]+)(?:\\?\|([^\]\n]*))?\]\]/g, (_full, _prefix: string, link: string) => {
+		const linkpath = link.trim();
+		const confluenceUrl = resolveConfluenceUrlForWikilink(app, linkpath, sourcePath);
+		refs.push(`${linkpath}=${confluenceUrl ?? ''}`);
+		return '';
+	});
+	return refs.join('|');
+}
+
+function resolveConfluenceUrlForWikilink(app: App, linkpath: string, sourcePath: string): string | null {
+	const targetPath = stripObsidianSubpath(linkpath).trim();
+	if (!targetPath) return null;
+
+	const target = app.metadataCache.getFirstLinkpathDest(targetPath, sourcePath);
+	if (!target) return null;
+
+	const frontmatter = app.metadataCache.getFileCache(target)?.frontmatter as Frontmatter | undefined;
+	const value = frontmatter?.[FrontmatterFields.URL];
+	return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function displayTextFromWikilink(linkpath: string): string {
+	const cleanPath = stripObsidianSubpath(linkpath);
+	const basename = cleanPath.split('/').pop() || cleanPath || linkpath;
+	return basename.replace(/\.md$/i, '');
+}
+
+function stripObsidianSubpath(linkpath: string): string {
+	return linkpath.split('#')[0]?.split('^')[0]?.trim() ?? '';
+}
+
+function isLikelyAttachmentLinkpath(linkpath: string): boolean {
+	const cleanPath = stripObsidianSubpath(linkpath);
+	const name = cleanPath.split('/').pop() ?? cleanPath;
+	return /\.[a-z0-9]{1,12}$/i.test(name) && !/\.md$/i.test(name);
+}
+
+function escapeMarkdownLinkText(value: string): string {
+	return value.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
+}
+
+function markdownLinkDestination(value: string): string {
+	return encodeURI(value).replace(/\(/g, '%28').replace(/\)/g, '%29');
 }
 
 const CODE_MASK_OPEN = '';

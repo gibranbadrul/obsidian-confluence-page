@@ -2,10 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { TFile } from '../helpers/obsidian';
 import { MarkdownConverter } from '../../src/confluence/markdownConverter';
 
-function createApp(files: TFile[] = []) {
+function createApp(files: TFile[] = [], frontmatterByPath: Record<string, Record<string, unknown> | undefined> = {}) {
 	return {
 		metadataCache: {
-			getFirstLinkpathDest: (linkpath: string) => files.find((file) => file.path === linkpath || file.name === linkpath) ?? null,
+			getFirstLinkpathDest: (linkpath: string) => files.find((file) =>
+				file.path === linkpath ||
+				file.name === linkpath ||
+				file.basename === linkpath ||
+				file.path.replace(/\.md$/i, '') === linkpath,
+			) ?? null,
+			getFileCache: (file: TFile) => ({ frontmatter: frontmatterByPath[file.path] }),
 		},
 		vault: {
 			getFiles: () => files,
@@ -52,13 +58,63 @@ describe('MarkdownConverter', () => {
 		expect(html).not.toContain('Hidden block');
 	});
 
-	it('converts Obsidian wikilinks to readable text', async () => {
+	it('converts Obsidian wikilinks to readable text when no Confluence URL exists', async () => {
 		const converter = new MarkdownConverter(createApp());
 		const html = await converter.convert('[[Some Note]] and [[Some Note|Readable Alias]]', 'note.md', createContext());
 
 		expect(html).toContain('Some Note');
 		expect(html).toContain('Readable Alias');
 		expect(html).not.toContain('[[');
+		expect(html).not.toContain('<a href=');
+	});
+
+	it('converts Obsidian wikilinks to Confluence page links when target notes are bound', async () => {
+		const target = new TFile('docs/reference-guide.md');
+		const converter = new MarkdownConverter(createApp([target], {
+			[target.path]: {
+				confluence_url: 'https://example.atlassian.net/wiki/spaces/TEAM/pages/123456/Reference+Guide',
+			},
+		}));
+
+		const html = await converter.convert(
+			'See [[reference-guide|Reference Guide]].',
+			'docs/current-note.md',
+			createContext(),
+		);
+
+		expect(html).toContain('<a href="https://example.atlassian.net/wiki/spaces/TEAM/pages/123456/Reference+Guide">Reference Guide</a>');
+	});
+
+	it('ignores heading anchors when resolving Confluence page links', async () => {
+		const target = new TFile('docs/release-checklist.md');
+		const converter = new MarkdownConverter(createApp([target], {
+			[target.path]: {
+				confluence_url: 'https://example.atlassian.net/wiki/spaces/TEAM/pages/777/Release+Checklist',
+			},
+		}));
+
+		const html = await converter.convert(
+			'See [[release-checklist#Before publishing|Release Checklist]].',
+			'docs/current-note.md',
+			createContext(),
+		);
+
+		expect(html).toContain('<a href="https://example.atlassian.net/wiki/spaces/TEAM/pages/777/Release+Checklist">Release Checklist</a>');
+	});
+
+	it('does not convert embedded notes to Confluence page links', async () => {
+		const target = new TFile('docs/Embedded Note.md');
+		const converter = new MarkdownConverter(createApp([target], {
+			[target.path]: {
+				confluence_url: 'https://example.atlassian.net/wiki/spaces/DOC/pages/999/Embedded',
+			},
+		}));
+
+		const html = await converter.convert('![[Embedded Note]]', 'docs/current.md', createContext());
+
+		expect(html).toContain('Embedded Note');
+		expect(html).not.toContain('<a href=');
+		expect(html).not.toContain('https://example.atlassian.net/wiki/spaces/DOC/pages/999/Embedded');
 	});
 
 	it('converts Obsidian callouts to Confluence structured macros', async () => {

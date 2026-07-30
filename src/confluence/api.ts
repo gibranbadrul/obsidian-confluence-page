@@ -25,6 +25,13 @@ export interface PageInfo {
 	spaceKey?: string;
 }
 
+export interface FolderInfo {
+	id: string;
+	title: string;
+	spaceId?: string;
+	spaceKey?: string;
+}
+
 export interface UpdatePagePayload {
 	title: string;
 	storageXhtml: string;
@@ -112,6 +119,21 @@ export class ConfluenceApi {
 		};
 	}
 
+	/** GET Cloud folder metadata. Only supported by Confluence Cloud v2. */
+	async getFolder(folderId: string): Promise<FolderInfo> {
+		const res = await this.request({
+			method: 'GET',
+			url: `${this.baseUrl}/api/v2/folders/${encodeURIComponent(folderId)}`,
+		});
+		const data = parseJsonObject(res.text, 'Confluence folder response');
+		return {
+			id: readRequiredString(data, 'id', 'Confluence folder response'),
+			title: readRequiredString(data, 'title', 'Confluence folder response'),
+			spaceId: readOptionalString(data, 'spaceId'),
+			spaceKey: readOptionalString(data, 'spaceKey'),
+		};
+	}
+
 	/** POST creates a child page. Returns new page ID and web URL for frontmatter writeback. */
 	async createPage(opts: {
 		spaceKey: string;
@@ -139,17 +161,43 @@ export class ConfluenceApi {
 			body,
 			extraHeaders: xsrfHeaders(ATLASSIAN_XSRF_NO_CHECK),
 		});
-		const data = parseJsonObject(res.text, 'Confluence create page response');
-		const links = readOptionalObject(data, '_links');
-		const id = readRequiredString(data, 'id', 'Confluence create page response');
-		const base = links ? readOptionalString(links, 'base') ?? this.baseUrl : this.baseUrl;
-		const webui = links ? readOptionalString(links, 'webui') ?? `/pages/viewpage.action?pageId=${id}` : `/pages/viewpage.action?pageId=${id}`;
+		return parseCreatedPageResponse(res.text, this.baseUrl, 'Confluence create page response');
+	}
 
-		return {
-			id,
-			title: readRequiredString(data, 'title', 'Confluence create page response'),
-			webUrl: base + webui,
-		};
+	/** POST creates a top-level page in a space. Used before moving a page under a Cloud folder. */
+	async createPageInSpace(opts: {
+		spaceKey: string;
+		title: string;
+		storageXhtml: string;
+	}): Promise<{ id: string; title: string; webUrl: string }> {
+		const body = JSON.stringify({
+			type: 'page',
+			title: opts.title,
+			space: { key: opts.spaceKey },
+			body: {
+				storage: {
+					value: opts.storageXhtml,
+					representation: 'storage',
+				},
+			},
+		});
+		const res = await this.request({
+			method: 'POST',
+			url: `${this.baseUrl}/rest/api/content`,
+			contentType: 'application/json',
+			body,
+			extraHeaders: xsrfHeaders(ATLASSIAN_XSRF_NO_CHECK),
+		});
+		return parseCreatedPageResponse(res.text, this.baseUrl, 'Confluence create page response');
+	}
+
+	/** Moves a page under another Confluence content container using the v1 move API append position. */
+	async movePageToParent(pageId: string, parentId: string): Promise<void> {
+		await this.request({
+			method: 'PUT',
+			url: `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}/move/append/${encodeURIComponent(parentId)}`,
+			extraHeaders: xsrfHeaders(ATLASSIAN_XSRF_NO_CHECK),
+		});
 	}
 
 	/** PUT updates a page. 409 is mapped to version_conflict so callers can retry. */
@@ -327,6 +375,20 @@ function parseJsonObject(text: string, context: string): JsonRecord {
 	}
 
 	return parsed;
+}
+
+function parseCreatedPageResponse(text: string, baseUrl: string, context: string): { id: string; title: string; webUrl: string } {
+	const data = parseJsonObject(text, context);
+	const links = readOptionalObject(data, '_links');
+	const id = readRequiredString(data, 'id', context);
+	const base = links ? readOptionalString(links, 'base') ?? baseUrl : baseUrl;
+	const webui = links ? readOptionalString(links, 'webui') ?? `/pages/viewpage.action?pageId=${id}` : `/pages/viewpage.action?pageId=${id}`;
+
+	return {
+		id,
+		title: readRequiredString(data, 'title', context),
+		webUrl: base + webui,
+	};
 }
 
 function readRequiredString(record: JsonRecord, key: string, context: string): string {

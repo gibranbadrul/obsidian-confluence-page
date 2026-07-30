@@ -92,6 +92,12 @@ export const en = {
 			name: 'Confluence base URL',
 			desc: 'Cloud looks like https://xxx.atlassian.net/wiki; Server usually has no /wiki suffix, e.g. https://confluence.your-corp.com',
 		},
+		confluenceInstanceType: {
+			name: 'Confluence type',
+			desc: 'Choose Cloud to enable Cloud-only behavior such as folder parents. Server / Data Center supports parent page URLs only.',
+			cloud: 'Cloud',
+			serverDataCenter: 'Server / Data Center',
+		},
 		authType: {
 			name: 'Authentication type',
 			desc: 'Basic: username + password/API token. Use this for Cloud (email + API token) and Server with classic accounts (domain account + password). Bearer: Personal Access Token. Use this for Server 7.9+ / DC with PAT enabled, or Cloud OAuth Bearer.',
@@ -202,7 +208,7 @@ export const en = {
 	template: {
 		title: '# Title',
 		usage:
-			'> Pick one of two publishing flows:\n> 1. Existing Confluence page → put the page URL in `confluence_url`.\n> 2. New child page → put the parent page URL in `confluence_parent_url`. On first publish, the plugin creates a child page named after this note, then writes the new URL back to `confluence_url`.\n> The other fields (`confluence_page_id`, `confluence_last_published_at`, `confluence_content_hash`) are maintained automatically.\n> Optional: set `confluence_title` to override the Confluence page title.\n>\n> Optional Confluence-only source markers:\n> - `<!-- confluence:ignore-start --> ... <!-- confluence:ignore-end -->` removes Obsidian-only content from published pages.',
+			'> Pick one of two publishing flows:\n> 1. Existing Confluence page → put the page URL in `confluence_url`.\n> 2. New child page → put the parent page URL in `confluence_parent_url`. On Confluence Cloud only, this may also be a folder URL. Server / Data Center supports parent page URLs only. On first publish, the plugin creates a child page named after this note, then writes the new URL back to `confluence_url`.\n> The other fields (`confluence_page_id`, `confluence_last_published_at`, `confluence_content_hash`) are maintained automatically.\n> Optional: set `confluence_title` to override the Confluence page title.\n>\n> Optional Confluence-only source markers:\n> - `<!-- confluence:ignore-start --> ... <!-- confluence:ignore-end -->` removes Obsidian-only content from published pages.',
 		bodyHeading: '## Body',
 		bodyPlaceholder: 'Write here…',
 		publishingPlaceholder: '<p>(publishing…)</p>',

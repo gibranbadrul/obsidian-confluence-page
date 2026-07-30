@@ -1,6 +1,10 @@
 import type { App, TFile } from 'obsidian';
 import { type ConfluenceApi, ConfluenceApiError } from '../confluence/api';
-import { parsePageIdFromUrl } from '../confluence/urlParser';
+import {
+	parseConfluenceParentTargetFromUrl,
+	parsePageIdFromUrl,
+	type ConfluenceParentTarget,
+} from '../confluence/urlParser';
 import { MarkdownConverter, type ConvertContext } from '../confluence/markdownConverter';
 import { AttachmentUploader } from '../confluence/attachmentUploader';
 import { MermaidRenderer } from '../confluence/mermaidRenderer';
@@ -16,6 +20,12 @@ export interface PublishEngineDeps {
 	settings: ConfluencePagePublisherSettings;
 	logger: Logger;
 	api: ConfluenceApi;
+}
+
+interface InitialPageCreationResult {
+	id: string;
+	webUrl: string;
+	moveTarget?: Extract<ConfluenceParentTarget, { type: 'folder' }>;
 }
 
 /**
@@ -127,32 +137,20 @@ export class PublishEngine {
 					this.deps.logger.warn(`Publish failed before request: ${path}`, `Cannot parse pageId from URL: ${binding.url}`);
 					return { path, skipped: false, success: false, error: `Cannot parse pageId from URL: ${binding.url}` };
 				}
-				const parentId = parsePageIdFromUrl(binding.parentUrl);
-				if (!parentId) {
-					this.deps.logger.warn(`Publish failed before request: ${path}`, `Cannot parse pageId from parent URL: ${binding.parentUrl}`);
-					return { path, skipped: false, success: false, error: `Cannot parse pageId from parent URL: ${binding.parentUrl}` };
-				}
 
-				this.deps.logger.info(`Fetching parent Confluence page metadata: ${path}`, `parentId=${parentId}`);
-				const parent = await this.deps.api.getPage(parentId);
-				if (!parent.spaceKey) {
-					this.deps.logger.warn(`Publish failed before create: ${path}`, `Parent page is missing spaceKey: ${binding.parentUrl}`);
-					return { path, skipped: false, success: false, error: `Parent page is missing spaceKey: ${binding.parentUrl}` };
-				}
-
-				this.deps.logger.info(`Creating child page: ${pageTitle} (parent=${parentId}, space=${parent.spaceKey})`);
-				const created = await this.deps.api.createPage({
-					spaceKey: parent.spaceKey,
-					parentId,
-					title: pageTitle,
-					storageXhtml: '<p>(publishing…)</p>',
-				});
+				const created = await this.createInitialPage(binding.parentUrl, pageTitle, path);
 				pageId = created.id;
 				createdNewPage = true;
 
 				// Write page ID immediately so a later failure does not create duplicate pages on the next publish.
 				await writeBinding(this.deps.app, file, { url: created.webUrl, pageId });
-				this.deps.logger.info(`Created child page ${created.id}: ${created.webUrl}`);
+				this.deps.logger.info(`Created Confluence page ${created.id}: ${created.webUrl}`);
+
+				if (created.moveTarget) {
+					this.deps.logger.info(`Moving Confluence page into folder: ${path}`, `pageId=${created.id} folderId=${created.moveTarget.id}`);
+					await this.deps.api.movePageToParent(created.id, created.moveTarget.id);
+					this.deps.logger.info(`Moved Confluence page into folder: ${path}`, `pageId=${created.id} folderId=${created.moveTarget.id}`);
+				}
 			}
 
 			const markdown = await this.deps.app.vault.cachedRead(file);
@@ -296,6 +294,58 @@ export class PublishEngine {
 			this.deps.logger.error(`Publish failed: ${path}`, msg);
 			return { path, skipped: false, success: false, error: msg };
 		}
+	}
+
+	private async createInitialPage(parentUrl: string, pageTitle: string, path: string): Promise<InitialPageCreationResult> {
+		const parentTarget = parseConfluenceParentTargetFromUrl(parentUrl);
+		if (!parentTarget) {
+			throw new Error(`Unsupported confluence_parent_url: ${parentUrl}`);
+		}
+
+		if (parentTarget.type === 'page') {
+			this.deps.logger.info(`Fetching parent Confluence page metadata: ${path}`, `parentId=${parentTarget.id}`);
+			const parent = await this.deps.api.getPage(parentTarget.id);
+			if (!parent.spaceKey) {
+				throw new Error(`Parent page is missing spaceKey: ${parentUrl}`);
+			}
+
+			this.deps.logger.info(`Creating child page: ${pageTitle} (parent=${parentTarget.id}, space=${parent.spaceKey})`);
+			const created = await this.deps.api.createPage({
+				spaceKey: parent.spaceKey,
+				parentId: parentTarget.id,
+				title: pageTitle,
+				storageXhtml: '<p>(publishing…)</p>',
+			});
+
+			return {
+				id: created.id,
+				webUrl: created.webUrl,
+			};
+		}
+
+		if (this.deps.settings.confluenceInstanceType !== 'cloud') {
+			throw new Error('Folder parent URLs are only supported for Confluence Cloud. Use a parent page URL for Confluence Server / Data Center.');
+		}
+
+		this.deps.logger.info(`Fetching parent Confluence folder metadata: ${path}`, `folderId=${parentTarget.id}`);
+		const folder = await this.deps.api.getFolder(parentTarget.id);
+		const spaceKey = parentTarget.spaceKey ?? folder.spaceKey;
+		if (!spaceKey) {
+			throw new Error(`Parent folder is missing spaceKey: ${parentUrl}`);
+		}
+
+		this.deps.logger.info(`Creating page before moving it into folder: ${pageTitle}`, `folder=${parentTarget.id} space=${spaceKey}`);
+		const created = await this.deps.api.createPageInSpace({
+			spaceKey,
+			title: pageTitle,
+			storageXhtml: '<p>(publishing…)</p>',
+		});
+
+		return {
+			id: created.id,
+			webUrl: created.webUrl,
+			moveTarget: parentTarget,
+		};
 	}
 
 	private getPreviousAttachments(pageId: string, binding: NoteBinding): Record<string, AttachmentRecord> {

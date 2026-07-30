@@ -5,10 +5,14 @@ import { ConfluenceApi, type ConfluenceAuthType } from './confluence/api';
 import { FrontmatterFields } from './frontmatter/handler';
 import { t } from './i18n';
 
+export type ConfluenceInstanceType = 'cloud' | 'server-data-center';
+
 export interface ConfluencePagePublisherSettings {
 	// ========== Connection ==========
 	/** Example: https://your-domain.atlassian.net/wiki */
 	confluenceBaseUrl: string;
+	/** Controls platform-specific behavior such as Cloud-only folder parents. */
+	confluenceInstanceType: ConfluenceInstanceType;
 	/** Authentication mode: Basic username/password-token or Bearer PAT. */
 	authType: ConfluenceAuthType;
 	/** Required for Basic auth. Cloud uses email; Server usually uses a domain account. */
@@ -49,6 +53,7 @@ export interface ConfluencePagePublisherSettings {
 
 export const DEFAULT_SETTINGS: ConfluencePagePublisherSettings = {
 	confluenceBaseUrl: '',
+	confluenceInstanceType: 'cloud',
 	authType: 'basic',
 	username: '',
 	apiToken: '',
@@ -78,6 +83,7 @@ export const DEFAULT_SETTINGS: ConfluencePagePublisherSettings = {
 export function normalizeSettings(settings: ConfluencePagePublisherSettings): ConfluencePagePublisherSettings {
 	return {
 		...settings,
+		confluenceInstanceType: normalizeConfluenceInstanceType(settings.confluenceInstanceType),
 		frontmatterKey: normalizeFrontmatterFieldName(settings.frontmatterKey, FrontmatterFields.URL),
 		confluencePageTitlePropertyKey: normalizeFrontmatterFieldName(settings.confluencePageTitlePropertyKey, ''),
 	};
@@ -99,6 +105,10 @@ function normalizeFrontmatterFieldName(value: string, fallback: string): string 
 		default:
 			return normalized;
 	}
+}
+
+function normalizeConfluenceInstanceType(value: unknown): ConfluenceInstanceType {
+	return value === 'server-data-center' ? 'server-data-center' : 'cloud';
 }
 
 export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
@@ -128,6 +138,18 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 					.setValue(s.confluenceBaseUrl)
 					.onChange(async (v) => {
 						s.confluenceBaseUrl = v.trim();
+						await this.plugin.saveSettings();
+					}));
+
+			new Setting(el)
+				.setName(t('settings.confluenceInstanceType.name'))
+				.setDesc(t('settings.confluenceInstanceType.desc'))
+				.addDropdown((d) => d
+					.addOption('cloud', t('settings.confluenceInstanceType.cloud'))
+					.addOption('server-data-center', t('settings.confluenceInstanceType.serverDataCenter'))
+					.setValue(s.confluenceInstanceType)
+					.onChange(async (v) => {
+						s.confluenceInstanceType = v as ConfluenceInstanceType;
 						await this.plugin.saveSettings();
 					}));
 

@@ -181,17 +181,6 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 		}
 	}
 
-	async publishCurrentFile(): Promise<void> {
-		const file = this.app.workspace.getActiveFile();
-		if (!file) {
-			this.logger.warn('Publish current note requested without an active note');
-			new Notice(t('notice.noteNotOpen'));
-			return;
-		}
-		this.logger.info(`Publish current note requested: ${file.path}`);
-		await this.publishFile(file);
-	}
-
 	/** Publishes all bound notes under the given folder recursively. */
 	async publishFolder(folder: TFolder): Promise<void> {
 		await this.ensureEngine();
@@ -253,33 +242,35 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 
 	// =========== Template ===========
 
-	/** Writes confluence-note.md into the configured template folder. force=true overwrites existing content. */
-	async installTemplateFile(force: boolean): Promise<boolean> {
-		try {
-			const folder = normalizePath(this.settings.templateFolderPath || 'templates');
-			await this.ensureFolder(folder);
-			const fullPath = folder + '/' + TEMPLATE_FILENAME;
-			const existing = this.app.vault.getAbstractFileByPath(fullPath);
-			const content = buildTemplateContent();
-			if (existing instanceof TFile) {
-				if (!force) return true;
-				await this.app.vault.modify(existing, content);
-			} else {
-				try {
-					await this.app.vault.create(fullPath, content);
-				} catch (e) {
-					const msg = e instanceof Error ? e.message : String(e);
-					if (/already exists/i.test(msg)) return true;
-					throw e;
-				}
-			}
-			this.logger.info(`Template written: ${fullPath}`);
-			return true;
-		} catch (e) {
-			this.logger.error('Failed to write template', e instanceof Error ? e.message : String(e));
-			return false;
-		}
-	}
+    /** Writes confluence-note.md into the configured template folder. force=true overwrites existing content. */
+    async installTemplateFile(force: boolean): Promise<boolean> {
+        try {
+            const folder = normalizePath(this.settings.templateFolderPath || 'templates');
+            await this.ensureFolder(folder);
+
+            const fullPath = `${folder}/${TEMPLATE_FILENAME}`;
+            const existing = this.app.vault.getAbstractFileByPath(fullPath);
+            const content = buildTemplateContent();
+
+            if (existing instanceof TFile) {
+                if (!force) return true;
+                await this.app.vault.modify(existing, content);
+            } else {
+                await this.app.vault.create(fullPath, content);
+            }
+
+            this.logger.info(`Template written: ${fullPath}`);
+            return true;
+        } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+
+            // Another operation may have created the template after the initial existence check.
+            if (/already exists/i.test(message)) return true;
+
+            this.logger.error('Failed to write template', message);
+            return false;
+        }
+    }
 
 	private async ensureFolder(path: string): Promise<void> {
 		if (!path) return;

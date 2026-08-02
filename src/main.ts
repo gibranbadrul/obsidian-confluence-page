@@ -346,6 +346,14 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			},
 		});
 		this.addCommand({
+			id: 'insert-confluence-ignore-line',
+			name: t('command.insertConfluenceIgnoreLine'),
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				if (!view.file) { new Notice(t('notice.noteNotOpen')); return; }
+				this.insertConfluenceIgnoreLine(editor);
+			},
+		});
+		this.addCommand({
 			id: 'insert-confluence-ignore-block',
 			name: t('command.insertConfluenceIgnoreBlock'),
 			editorCallback: (editor: Editor, view: MarkdownView) => {
@@ -385,6 +393,38 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 					: t('notice.authFail', { error: r.error ?? '' }));
 			},
 		});
+	}
+
+	private insertConfluenceIgnoreLine(editor: Editor): void {
+		const selection = editor.getSelection();
+		const startCursor = selection ? editor.getCursor('from') : editor.getCursor();
+		const endCursor = selection ? editor.getCursor('to') : startCursor;
+		const endLine = selection && endCursor.ch === 0 && endCursor.line > startCursor.line
+			? endCursor.line - 1
+			: endCursor.line;
+		let insertedCount = 0;
+
+		for (let lineNumber = endLine; lineNumber >= startCursor.line; lineNumber -= 1) {
+			const lineText = editor.getLine(lineNumber);
+			if (hasConfluenceIgnoreLineMarker(lineText)) continue;
+
+			const indentationLength = lineText.match(/^[\t ]*/)?.[0].length ?? 0;
+			const markerSuffix = lineText.slice(indentationLength) ? ' ' : '';
+			editor.replaceRange(
+				CONFLUENCE_IGNORE_LINE_MARKER + markerSuffix,
+				{ line: lineNumber, ch: indentationLength },
+			);
+			insertedCount += 1;
+
+			if (!selection && lineNumber === startCursor.line && startCursor.ch >= indentationLength) {
+				editor.setCursor({
+					line: startCursor.line,
+					ch: startCursor.ch + CONFLUENCE_IGNORE_LINE_MARKER.length + markerSuffix.length,
+				});
+			}
+		}
+
+		new Notice(t(insertedCount > 0 ? 'notice.ignoreLineInserted' : 'notice.ignoreLineAlreadyExists'));
 	}
 
 	private insertConfluenceIgnoreBlock(editor: Editor): void {
@@ -464,6 +504,11 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			.setTitle(t('menu.publishToConfluence'))
 			.setIcon('cloud-upload')
 			.onClick(() => { void this.publishFile(file); }));
+
+		menu.addItem((item) => item
+			.setTitle(t('menu.addIgnoreLineMacro'))
+			.setIcon('eye-off')
+			.onClick(() => { this.insertConfluenceIgnoreLine(editor); }));
 
 		menu.addItem((item) => item
 			.setTitle(t('menu.addIgnoreBlockMacro'))
@@ -554,6 +599,12 @@ interface SubmenuCapableMenuItem {
 	setTitle(title: string): SubmenuCapableMenuItem;
 	setIcon(icon: string): SubmenuCapableMenuItem;
 	setSubmenu?: () => Menu;
+}
+
+const CONFLUENCE_IGNORE_LINE_MARKER = '<!-- confluence:ignore-line -->';
+
+function hasConfluenceIgnoreLineMarker(lineText: string): boolean {
+	return /^\s*<!--\s*confluence:ignore-line\s*-->/i.test(lineText);
 }
 
 function createConfluenceIgnoreBlock(content: string): string {

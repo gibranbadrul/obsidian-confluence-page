@@ -496,6 +496,8 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			.setIcon('cloud-upload')
 			.onClick(() => { void this.publishFile(file); }));
 
+        menu.addSeparator();
+
 		menu.addItem((item) => item
 			.setTitle(t('menu.addIgnoreLineMacro'))
 			.setIcon('eye-off')

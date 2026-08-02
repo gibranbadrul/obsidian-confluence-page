@@ -138,7 +138,7 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 					.setValue(s.confluenceBaseUrl)
 					.onChange(async (v) => {
 						s.confluenceBaseUrl = v.trim();
-						await this.plugin.saveSettings();
+						await this.saveCredentialsAndRefresh();
 					}));
 
 			new Setting(el)
@@ -162,7 +162,7 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 					.setValue(s.authType)
 					.onChange(async (v) => {
 						s.authType = v as ConfluenceAuthType;
-						await this.plugin.saveSettings();
+						await this.saveCredentialsAndRefresh();
 						this.renderSettingsContent();
 					}));
 
@@ -175,7 +175,7 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 						.setValue(s.username)
 						.onChange(async (v) => {
 							s.username = v.trim();
-							await this.plugin.saveSettings();
+							await this.saveCredentialsAndRefresh();
 						}));
 			}
 
@@ -387,7 +387,7 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 				comp.setValue(this.plugin.settings.apiToken);
 				comp.onChange((value: string) => {
 					this.plugin.settings.apiToken = value.trim();
-					void this.plugin.saveSettings();
+					void this.saveCredentialsAndRefresh();
 				});
 				return comp;
 			});
@@ -397,13 +397,18 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 				.setValue(this.plugin.settings.apiToken)
 				.onChange(async (v) => {
 					this.plugin.settings.apiToken = v.trim();
-					await this.plugin.saveSettings();
+					await this.saveCredentialsAndRefresh();
 				}));
 		}
 
 		const hint = parent.createDiv({ cls: 'confluence-publisher-keyvault-hint' });
 		hint.createSpan({ text: t('settings.token.hintLabel'), cls: 'confluence-publisher-keyvault-hint-label' });
 		hint.createSpan({ text: t('settings.token.hintBody') });
+	}
+
+	private async saveCredentialsAndRefresh(): Promise<void> {
+		await this.plugin.saveSettings();
+		await this.plugin.refreshCredentials();
 	}
 
 	private async runValidateAuth(): Promise<void> {

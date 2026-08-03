@@ -66,7 +66,7 @@ async function encodePlantUml(source: string): Promise<string> {
 async function deflateRaw(data: Uint8Array): Promise<Uint8Array> {
 	const CS = (window as unknown as { CompressionStream?: typeof CompressionStream }).CompressionStream;
 	if (!CS) throw new Error('CompressionStream is unavailable; cannot encode PlantUML');
-	const stream = (new Blob([data as BlobPart]).stream() as unknown as PipeThroughReadableStream)
+	const stream = (new Blob([data]).stream() as unknown as PipeThroughReadableStream)
 		.pipeThrough<Uint8Array>(new CS('deflate-raw'));
 	const buf = await new Response(stream).arrayBuffer();
 	return new Uint8Array(buf);

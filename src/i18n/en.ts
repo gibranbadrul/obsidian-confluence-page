@@ -26,7 +26,7 @@ export const en = {
 		authOk: 'Authentication ok: {name}',
 		authFail: 'Authentication failed: {error}',
 		templateWritten: 'Template written',
-		templateWriteFailed: 'Failed to write template, see console',
+		templateWriteFailed: 'Failed to write template',
 		exportPreviewOk: 'Storage preview exported: {path}',
 		exportPreviewFailed: 'Failed to export preview: {error}',
 		pathRequired: 'Please fill in the note path',

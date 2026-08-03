@@ -1,4 +1,4 @@
-import { type App, Notice, PluginSettingTab, type Setting, type SettingDefinitionItem } from 'obsidian';
+import { type App, Notice, PluginSettingTab, type Setting, type SettingDefinitionItem, type SettingGroupItem } from 'obsidian';
 import * as obsidianModule from 'obsidian';
 import type ConfluencePagePublisherPlugin from './main';
 import { ConfluenceApi, type ConfluenceAuthType } from './confluence/api';
@@ -122,6 +122,14 @@ function parseMultilineSettingValue(value: unknown): string[] {
 		.filter(Boolean);
 }
 
+/** Setting keys whose change requires rebuilding the publish engine. */
+const REBUILD_PUBLISH_ENGINE_KEYS = new Set([
+	'renderMermaidToPng',
+	'mermaidRenderUrl',
+	'renderPlantUmlToPng',
+	'plantUmlServerUrl',
+]);
+
 export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 	plugin: ConfluencePagePublisherPlugin;
 	private authResultEl: HTMLElement | null = null;
@@ -134,271 +142,215 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 	/** Obsidian 1.13.0+ declarative settings used for rendering and global settings search. */
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		const sectionClass = 'confluence-publisher-section';
+		const group = (heading: string, items: SettingGroupItem[]): SettingDefinitionItem => ({
+			type: 'group',
+			heading,
+			cls: sectionClass,
+			items,
+		});
 
 		return [
-			{
-				type: 'group',
-				heading: t('settings.section.connection'),
-				cls: sectionClass,
-				items: [
-					{
-						name: t('settings.baseUrl.name'),
-						desc: t('settings.baseUrl.desc'),
-						control: {
-							type: 'text',
-							key: 'confluenceBaseUrl',
-							placeholder: 'https://example.atlassian.net/wiki',
+			group(t('settings.section.connection'), [
+				{
+					name: t('settings.baseUrl.name'),
+					desc: t('settings.baseUrl.desc'),
+					control: {
+						type: 'text',
+						key: 'confluenceBaseUrl',
+						placeholder: 'https://example.atlassian.net/wiki',
+					},
+				},
+				{
+					name: t('settings.confluenceInstanceType.name'),
+					desc: t('settings.confluenceInstanceType.desc'),
+					control: {
+						type: 'dropdown',
+						key: 'confluenceInstanceType',
+						options: {
+							cloud: t('settings.confluenceInstanceType.cloud'),
+							'server-data-center': t('settings.confluenceInstanceType.serverDataCenter'),
 						},
 					},
-					{
-						name: t('settings.confluenceInstanceType.name'),
-						desc: t('settings.confluenceInstanceType.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'confluenceInstanceType',
-							options: {
-								cloud: t('settings.confluenceInstanceType.cloud'),
-								'server-data-center': t('settings.confluenceInstanceType.serverDataCenter'),
-							},
+				},
+				{
+					name: t('settings.authType.name'),
+					desc: t('settings.authType.desc'),
+					control: {
+						type: 'dropdown',
+						key: 'authType',
+						options: {
+							basic: t('settings.authType.basic'),
+							bearer: t('settings.authType.bearer'),
 						},
 					},
-					{
-						name: t('settings.authType.name'),
-						desc: t('settings.authType.desc'),
-						control: {
-							type: 'dropdown',
-							key: 'authType',
-							options: {
-								basic: t('settings.authType.basic'),
-								bearer: t('settings.authType.bearer'),
-							},
-						},
+				},
+				{
+					name: t('settings.username.name'),
+					desc: t('settings.username.desc'),
+					visible: () => this.plugin.settings.authType === 'basic',
+					control: {
+						type: 'text',
+						key: 'username',
+						placeholder: t('settings.username.placeholder'),
 					},
-					{
-						name: t('settings.username.name'),
-						desc: t('settings.username.desc'),
-						visible: () => this.plugin.settings.authType === 'basic',
-						control: {
-							type: 'text',
-							key: 'username',
-							placeholder: t('settings.username.placeholder'),
-						},
+				},
+				{
+					...this.tokenSettingLabel(),
+					render: (setting) => this.configureTokenSetting(setting),
+				},
+				{
+					name: t('settings.validate.button'),
+					render: (setting) => {
+						this.renderActionButton(setting, t('settings.validate.button'), () => this.runValidateAuth());
+						setting.settingEl.addClass('confluence-publisher-setting-wrap');
+						this.authResultEl = setting.settingEl.createDiv({ cls: 'confluence-publisher-auth-result' });
 					},
-					{
-						name: this.plugin.settings.authType === 'bearer'
-							? t('settings.token.nameBearer')
-							: t('settings.token.nameBasic'),
-						desc: this.plugin.settings.authType === 'bearer'
-							? t('settings.token.descBearer')
-							: t('settings.token.descBasic'),
-						render: (setting) => this.configureTokenSetting(setting, setting.settingEl),
+				},
+			]),
+			group(t('settings.section.pageDefaults'), [
+				{
+					name: t('settings.templateFolder.name'),
+					desc: t('settings.templateFolder.desc'),
+					control: {
+						type: 'text',
+						key: 'templateFolderPath',
+						placeholder: 'Templates',
 					},
-					{
-						name: t('settings.validate.button'),
-						render: (setting) => {
-							setting
-								.setName(t('settings.validate.button'))
-								.addButton((button) => button
-									.setButtonText(t('settings.validate.button'))
-									.setCta()
-									.onClick(async () => {
-										await this.runValidateAuth();
-									}));
-							this.authResultEl = setting.settingEl.createDiv({ cls: 'confluence-publisher-auth-result' });
-						},
+				},
+				{
+					name: t('settings.pageTitleProperty.name'),
+					desc: t('settings.pageTitleProperty.desc'),
+					control: {
+						type: 'text',
+						key: 'confluencePageTitlePropertyKey',
+						placeholder: FrontmatterFields.CUSTOM_TITLE,
 					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.section.pageDefaults'),
-				cls: sectionClass,
-				items: [
-					{
-						name: t('settings.templateFolder.name'),
-						desc: t('settings.templateFolder.desc'),
-						control: {
-							type: 'text',
-							key: 'templateFolderPath',
-							placeholder: 'Templates',
-						},
+				},
+				{
+					name: t('settings.autoInstallTemplate.name'),
+					desc: t('settings.autoInstallTemplate.desc'),
+					control: {
+						type: 'toggle',
+						key: 'autoInstallTemplate',
 					},
-					{
-						name: t('settings.pageTitleProperty.name'),
-						desc: t('settings.pageTitleProperty.desc'),
-						control: {
-							type: 'text',
-							key: 'confluencePageTitlePropertyKey',
-							placeholder: FrontmatterFields.CUSTOM_TITLE,
-						},
+				},
+				{
+					name: t('settings.writeTemplateNow'),
+					render: (setting) => this.renderActionButton(setting, t('settings.writeTemplateNow'), async () => {
+						const written = await this.plugin.installTemplateFile(true);
+						new Notice(written ? t('notice.templateWritten') : t('notice.templateWriteFailed'));
+					}),
+				},
+			]),
+			group(t('settings.section.publishingScope'), [
+				{
+					name: t('settings.scanFolders.name'),
+					desc: t('settings.scanFolders.desc'),
+					control: {
+						type: 'textarea',
+						key: 'scanFoldersText',
+						rows: 4,
 					},
-					{
-						name: t('settings.autoInstallTemplate.name'),
-						desc: t('settings.autoInstallTemplate.desc'),
-						control: {
-							type: 'toggle',
-							key: 'autoInstallTemplate',
-						},
+				},
+				{
+					name: t('settings.ignore.name'),
+					desc: t('settings.ignore.desc'),
+					control: {
+						type: 'textarea',
+						key: 'ignorePatternsText',
+						rows: 4,
 					},
-					{
-						name: t('settings.writeTemplateNow'),
-						render: (setting) => {
-							setting
-								.setName(t('settings.writeTemplateNow'))
-								.addButton((button) => button
-									.setButtonText(t('settings.writeTemplateNow'))
-									.setCta()
-									.onClick(async () => {
-										const written = await this.plugin.installTemplateFile(true);
-										new Notice(written ? t('notice.templateWritten') : t('notice.templateWriteFailed'));
-									}));
-						},
+				},
+				{
+					name: t('settings.publishAllNow'),
+					render: (setting) => this.renderActionButton(setting, t('settings.publishAllNow'), () => this.plugin.publishAll()),
+				},
+			]),
+			group(t('settings.section.metadata'), [
+				{
+					name: t('settings.frontmatterKey.name'),
+					desc: `${t('settings.frontmatterKey.desc')} ${t('settings.frontmatterMapping.desc')}`,
+					control: {
+						type: 'text',
+						key: 'frontmatterKey',
+						placeholder: FrontmatterFields.URL,
 					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.section.publishingScope'),
-				cls: sectionClass,
-				items: [
-					{
-						name: t('settings.scanFolders.name'),
-						desc: t('settings.scanFolders.desc'),
-						control: {
-							type: 'textarea',
-							key: 'scanFoldersText',
-							rows: 4,
-						},
+				},
+			]),
+			group(t('settings.section.publishingAssets'), [
+				{
+					name: t('settings.uploadAttachments.name'),
+					desc: t('settings.uploadAttachments.desc'),
+					control: {
+						type: 'toggle',
+						key: 'uploadAttachments',
 					},
-					{
-						name: t('settings.ignore.name'),
-						desc: t('settings.ignore.desc'),
-						control: {
-							type: 'textarea',
-							key: 'ignorePatternsText',
-							rows: 4,
-						},
+				},
+				{
+					name: t('settings.maxAttachmentSize.name'),
+					desc: t('settings.maxAttachmentSize.desc'),
+					control: {
+						type: 'number',
+						key: 'maxAttachmentSizeMB',
+						defaultValue: 10,
+						min: 0.1,
+						step: 'any',
 					},
-					{
-						name: t('settings.publishAllNow'),
-						render: (setting) => {
-							setting
-								.setName(t('settings.publishAllNow'))
-								.addButton((button) => button
-									.setButtonText(t('settings.publishAllNow'))
-									.setCta()
-									.onClick(async () => {
-										await this.plugin.publishAll();
-									}));
-						},
+				},
+			]),
+			group(t('settings.section.contentConversion'), [
+				{
+					name: t('settings.mermaid.toggleName'),
+					desc: `${t('settings.diagramsIntro')} ${t('settings.mermaid.toggleDesc')}`,
+					control: {
+						type: 'toggle',
+						key: 'renderMermaidToPng',
 					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.section.metadata'),
-				cls: sectionClass,
-				items: [
-					{
-						name: t('settings.frontmatterKey.name'),
-						desc: `${t('settings.frontmatterKey.desc')} ${t('settings.frontmatterMapping.desc')}`,
-						control: {
-							type: 'text',
-							key: 'frontmatterKey',
-							placeholder: FrontmatterFields.URL,
-						},
+				},
+				{
+					name: t('settings.mermaid.urlName'),
+					desc: t('settings.mermaid.urlDesc'),
+					control: {
+						type: 'text',
+						key: 'mermaidRenderUrl',
+						placeholder: DEFAULT_SETTINGS.mermaidRenderUrl,
 					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.section.publishingAssets'),
-				cls: sectionClass,
-				items: [
-					{
-						name: t('settings.uploadAttachments.name'),
-						desc: t('settings.uploadAttachments.desc'),
-						control: {
-							type: 'toggle',
-							key: 'uploadAttachments',
-						},
+				},
+				{
+					name: t('settings.plantuml.toggleName'),
+					desc: t('settings.plantuml.toggleDesc'),
+					control: {
+						type: 'toggle',
+						key: 'renderPlantUmlToPng',
 					},
-					{
-						name: t('settings.maxAttachmentSize.name'),
-						desc: t('settings.maxAttachmentSize.desc'),
-						control: {
-							type: 'number',
-							key: 'maxAttachmentSizeMB',
-							defaultValue: 10,
-							min: 0.1,
-							step: 'any',
-						},
+				},
+				{
+					name: t('settings.plantuml.urlName'),
+					desc: t('settings.plantuml.urlDesc'),
+					control: {
+						type: 'text',
+						key: 'plantUmlServerUrl',
+						placeholder: DEFAULT_SETTINGS.plantUmlServerUrl,
 					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.section.contentConversion'),
-				cls: sectionClass,
-				items: [
-					{
-						name: t('settings.mermaid.toggleName'),
-						desc: `${t('settings.diagramsIntro')} ${t('settings.mermaid.toggleDesc')}`,
-						control: {
-							type: 'toggle',
-							key: 'renderMermaidToPng',
-						},
+				},
+			]),
+			group(t('settings.section.interface'), [
+				{
+					name: t('settings.showStatusBar.name'),
+					control: {
+						type: 'toggle',
+						key: 'showStatusBar',
 					},
-					{
-						name: t('settings.mermaid.urlName'),
-						desc: t('settings.mermaid.urlDesc'),
-						control: {
-							type: 'text',
-							key: 'mermaidRenderUrl',
-							placeholder: DEFAULT_SETTINGS.mermaidRenderUrl,
-						},
+				},
+				{
+					name: t('settings.showNotice.name'),
+					desc: t('settings.showNotice.desc'),
+					control: {
+						type: 'toggle',
+						key: 'showNotice',
 					},
-					{
-						name: t('settings.plantuml.toggleName'),
-						desc: t('settings.plantuml.toggleDesc'),
-						control: {
-							type: 'toggle',
-							key: 'renderPlantUmlToPng',
-						},
-					},
-					{
-						name: t('settings.plantuml.urlName'),
-						desc: t('settings.plantuml.urlDesc'),
-						control: {
-							type: 'text',
-							key: 'plantUmlServerUrl',
-							placeholder: DEFAULT_SETTINGS.plantUmlServerUrl,
-						},
-					},
-				],
-			},
-			{
-				type: 'group',
-				heading: t('settings.section.interface'),
-				cls: sectionClass,
-				items: [
-					{
-						name: t('settings.showStatusBar.name'),
-						control: {
-							type: 'toggle',
-							key: 'showStatusBar',
-						},
-					},
-					{
-						name: t('settings.showNotice.name'),
-						desc: t('settings.showNotice.desc'),
-						control: {
-							type: 'toggle',
-							key: 'showNotice',
-						},
-					},
-				],
-			},
+				},
+			]),
 		];
 	}
 
@@ -456,29 +408,19 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 			}
 			case 'renderMermaidToPng':
 				settings.renderMermaidToPng = value === true;
-				await this.plugin.saveSettings();
-				this.plugin.rebuildPublishEngine();
-				return;
+				break;
 			case 'mermaidRenderUrl':
 				settings.mermaidRenderUrl = readStringSettingValue(value).trim() || DEFAULT_SETTINGS.mermaidRenderUrl;
-				await this.plugin.saveSettings();
-				this.plugin.rebuildPublishEngine();
-				return;
+				break;
 			case 'renderPlantUmlToPng':
 				settings.renderPlantUmlToPng = value === true;
-				await this.plugin.saveSettings();
-				this.plugin.rebuildPublishEngine();
-				return;
+				break;
 			case 'plantUmlServerUrl':
 				settings.plantUmlServerUrl = readStringSettingValue(value).trim() || DEFAULT_SETTINGS.plantUmlServerUrl;
-				await this.plugin.saveSettings();
-				this.plugin.rebuildPublishEngine();
-				return;
+				break;
 			case 'showStatusBar':
 				settings.showStatusBar = value === true;
-				await this.plugin.saveSettings();
-				this.plugin.updateStatusBarVisibility();
-				return;
+				break;
 			case 'showNotice':
 				settings.showNotice = value === true;
 				break;
@@ -487,13 +429,33 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 		}
 
 		await this.plugin.saveSettings();
+		if (REBUILD_PUBLISH_ENGINE_KEYS.has(key)) this.plugin.rebuildPublishEngine();
+		if (key === 'showStatusBar') this.plugin.updateStatusBarVisibility();
 	}
 
-	private configureTokenSetting(setting: Setting, hintParent: HTMLElement): void {
+	private tokenSettingLabel(): { name: string; desc: string } {
 		const isBearer = this.plugin.settings.authType === 'bearer';
+		return {
+			name: isBearer ? t('settings.token.nameBearer') : t('settings.token.nameBasic'),
+			desc: isBearer ? t('settings.token.descBearer') : t('settings.token.descBasic'),
+		};
+	}
+
+	/** Renders a name-only action button row (validate, write template, publish all). */
+	private renderActionButton(setting: Setting, label: string, onClick: () => void | Promise<void>): void {
 		setting
-			.setName(isBearer ? t('settings.token.nameBearer') : t('settings.token.nameBasic'))
-			.setDesc(isBearer ? t('settings.token.descBearer') : t('settings.token.descBasic'));
+			.setName(label)
+			.addButton((button) => button
+				.setButtonText(label)
+				.setCta()
+				.onClick(async () => {
+					await onClick();
+				}));
+	}
+
+	private configureTokenSetting(setting: Setting): void {
+		const { name, desc } = this.tokenSettingLabel();
+		setting.setName(name).setDesc(desc);
 		const SecretComponentCtor = (obsidianModule as unknown as {
 			SecretComponent?: new (app: App, el: HTMLElement) => { setValue(v: string): unknown; onChange(fn: (v: string) => void): unknown };
 		}).SecretComponent;
@@ -519,7 +481,8 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 				}));
 		}
 
-		const hint = hintParent.createDiv({ cls: 'confluence-publisher-keyvault-hint' });
+		setting.settingEl.addClass('confluence-publisher-setting-wrap');
+		const hint = setting.settingEl.createDiv({ cls: 'confluence-publisher-keyvault-hint' });
 		hint.createSpan({ text: t('settings.token.hintLabel'), cls: 'confluence-publisher-keyvault-hint-label' });
 		hint.createSpan({ text: t('settings.token.hintBody') });
 	}

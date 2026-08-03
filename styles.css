@@ -45,8 +45,15 @@ Confluence Page Publisher plugin styles
     color: var(--text-accent);
 }
 
+/* Rows with extra full-width content (key vault hint, auth result) wrap onto
+   their own line below the name/desc/control content instead of squeezing beside it. */
+.confluence-publisher-setting-wrap {
+    flex-wrap: wrap;
+}
+
 /* Key vault hint */
 .confluence-publisher-keyvault-hint {
+    flex: 1 0 100%;
     margin: 8px 0 16px 0;
     padding: 10px 12px;
     background: var(--background-secondary-alt);
@@ -63,6 +70,7 @@ Confluence Page Publisher plugin styles
 
 /* Authentication validation result */
 .confluence-publisher-auth-result {
+    flex: 1 0 100%;
     margin-top: 8px;
     padding: 8px 12px;
     border-radius: 4px;

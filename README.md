@@ -1,7 +1,7 @@
 <div align="center">
 <p>
   <img src='assets/obsidian-confluence-page-banner.png'>
-  <a href="#">Obsidian Confluence Page</a>
+  <a href="https://github.com/gibranbadrul/obsidian-confluence-page">Confluence Page Publisher</a>
 </p>
 
 <p>
@@ -16,7 +16,6 @@
 
 ---
 
-<!-- markdownlint-disable -->
 <details>
 <summary>📖 Table of Contents</summary>
 
@@ -58,7 +57,6 @@
 * [License](#license)
 
 </details>
-<!-- markdownlint-restore -->
 
 ---
 
@@ -78,7 +76,7 @@ Settings > Community plugins > Browse > Search `Confluence Page Publisher` > Ins
 2. Create folder:
 
    ```text
-   <vault>/.obsidian/plugins/confluence-page-publisher/
+   /path/to/your-vault/.obsidian/plugins/confluence-page-publisher/
    ```
 
 3. Copy the 3 files into that folder
@@ -115,19 +113,19 @@ Command Palette > Publish current note
 
 The plugin converts the note to Confluence Storage XHTML, uploads local attachments, updates the Confluence page, and writes publish metadata back to the note.
 
-After a successful publish, the note frontmatter will look like this:
+After a successful publishing, the note frontmatter will look like this:
 
 ```yaml
 ---
 confluence_url: "https://example.atlassian.net/wiki/spaces/DOC/pages/123456/My+Page"
 confluence_page_id: "123456"
 confluence_last_published_at: "2026-07-07T10:30:00.000Z"
-confluence_content_hash: "..."
+confluence_content_hash: "d3f91cb44f6c8a6d72c640adbc18e870f1aa0031"
 confluence_attachments:
   "123456":
     image.png:
-      hash: "..."
-      id: "..."
+      hash: "38ab93050f81a0c93d8166150ed8540a47f2748d"
+      id: "att987654"
 ---
 ```
 
@@ -231,81 +229,59 @@ Creating a root page directly from a space key is planned. New pages currently r
 
 ## What gets converted
 
-| Element                                     | Output                                 |
-|---------------------------------------------|----------------------------------------|
-| YAML frontmatter                            | Removed from the published body        |
-| Headings H1-H6                              | Confluence headings                    |
-| Paragraphs                                  | Confluence paragraphs                  |
-| Bold, italic, bold italic                   | Rich text formatting                   |
-| Strikethrough                               | Rich text formatting                   |
-| Inline code                                 | Inline code                            |
-| Standard links                              | Confluence links                       |
-| Plain URLs                                  | Linkified URLs                         |
-| Ordered lists                               | Ordered lists                          |
-| Unordered lists                             | Bullet lists                           |
-| Nested lists                                | Nested lists                           |
-| Blockquotes                                 | Blockquotes                            |
-| Tables                                      | Tables                                 |
-| Horizontal rules                            | Horizontal rules                       |
-| Fenced code blocks                          | Confluence code macros                 |
-| Code block language                         | Preserved when available               |
-| Indented code blocks                        | Confluence code macros                 |
-| Obsidian wikilinks `[[Note]]`               | Confluence link when the target note is bound; readable text otherwise |
-| Obsidian wikilink aliases `[[Note\|Alias]]` | Same resolution with the alias used as link text                    |
-| Obsidian callouts `> [!note]`               | Confluence structured macros           |
-| Local Markdown images                       | Confluence attachments                 |
-| Obsidian image embeds                       | Confluence attachments                 |
-| Remote images                               | Remote image URLs                      |
-| Image alt text                              | Preserved when available               |
-| Mermaid blocks                              | Rendered image attachment when enabled |
-| PlantUML blocks                             | Rendered image attachment when enabled |
+| Element                   | Output                                                                 |
+|---------------------------|------------------------------------------------------------------------|
+| YAML frontmatter          | Removed from the published body                                        |
+| Headings H1-H6            | Confluence headings                                                    |
+| Paragraphs                | Confluence paragraphs                                                  |
+| Bold, italic, bold italic | Rich text formatting                                                   |
+| Strikethrough             | Rich text formatting                                                   |
+| Inline code               | Inline code                                                            |
+| Standard links            | Confluence links                                                       |
+| Plain URLs                | Linkified URLs                                                         |
+| Ordered lists             | Ordered lists                                                          |
+| Unordered lists           | Bullet lists                                                           |
+| Nested lists              | Nested lists                                                           |
+| Blockquotes               | Blockquotes                                                            |
+| Tables                    | Tables                                                                 |
+| Horizontal rules          | Horizontal rules                                                       |
+| Fenced code blocks        | Confluence code macros                                                 |
+| Code block language       | Preserved when available                                               |
+| Indented code blocks      | Confluence code macros                                                 |
+| Obsidian wikilinks        | Confluence link when the target note is bound; readable text otherwise |
+| Obsidian wikilink aliases | Same resolution with the alias used as link text                       |
+| Obsidian callouts         | Confluence structured macros                                           |
+| Local Markdown images     | Confluence attachments                                                 |
+| Obsidian image embeds     | Confluence attachments                                                 |
+| Remote images             | Remote image URLs                                                      |
+| Image alt text            | Preserved when available                                               |
+| Mermaid blocks            | Rendered image attachment when enabled                                 |
+| PlantUML blocks           | Rendered image attachment when enabled                                 |
 
 ## Not converted yet
 
-| Element                             | Current behavior                                               |
-|-------------------------------------|----------------------------------------------------------------|
-| Highlight `==text==`                | Kept as plain text                                             |
-| Task lists `- [ ]` / `- [x]`        | Kept as text markers                                           |
-| Heading/block wikilinks             | Resolve the target page when bound, but do not preserve the heading or block anchor |
-| Non-image file embeds               | Uploaded, but richer attachment rendering is planned           |
-| Footnotes                           | Kept as plain text                                             |
-| Math / LaTeX                        | Kept as plain text                                             |
-| Tags                                | Kept as text; Confluence labels are planned                    |
-| Note transclusion `![[Other Note]]` | Not inlined yet                                                |
-| Raw HTML                            | Escaped / not executed                                         |
-| Definition lists                    | Kept as regular text                                           |
-| Supplementary emoji                 | Replaced with stable placeholders for Confluence compatibility |
+| Element                 | Current behavior                                                                    |
+|-------------------------|-------------------------------------------------------------------------------------|
+| Highlight               | Kept as plain text                                                                  |
+| Task lists              | Kept as text markers                                                                |
+| Heading/block wikilinks | Resolve the target page when bound, but do not preserve the heading or block anchor |
+| Non-image file embeds   | Uploaded, but richer attachment rendering is planned                                |
+| Footnotes               | Kept as plain text                                                                  |
+| Math / LaTeX            | Kept as plain text                                                                  |
+| Tags                    | Kept as text; Confluence labels are planned                                         |
+| Note transclusion       | Not inlined yet                                                                     |
+| Raw HTML                | Escaped / not executed                                                              |
+| Definition lists        | Kept as regular text                                                                |
+| Supplementary emoji     | Replaced with stable placeholders for Confluence compatibility                      |
 
 ## Internal macros
 
 Confluence Page Publisher supports a few internal comment macros. These macros are only used by the plugin before publishing. They are not sent to Confluence.
 
-| Macro                                                                 | Scope       | Behavior                                                                       | UI helper                         |
-|-----------------------------------------------------------------------|-------------|--------------------------------------------------------------------------------|-----------------------------------|
-| `<!-- confluence:ignore-line -->`                                     | Single line | Removes the whole line from the published output                               | Yes, via `Add ignore line macro`  |
-| `<!-- confluence:ignore-start -->` + `<!-- confluence:ignore-end -->` | Block       | Removes everything between the start and end markers from the published output | Yes, via `Add ignore block macro` |
-
-Example ignore line:
-
-```md
-<!-- confluence:ignore-line --> This line will not be published.
-```
-
-`Add ignore line macro` adds the marker to the current line. When multiple lines are selected, it adds the marker to every selected line and skips lines that are already marked.
-
-Example ignore block:
-
-```md
-<!-- confluence:ignore-start -->
-
-This whole block will not be published.
-
-- Hidden bullet
-- Hidden text
-- Hidden [[wikilink]]
-
-<!-- confluence:ignore-end -->
-```
+| Scope       | Behavior                                                                       | UI helper                         |
+|-------------|--------------------------------------------------------------------------------|-----------------------------------|
+| Single line | Removes the whole line from the published output                               | Yes, via `Add ignore line macro`  |
+| Block       | Removes everything between the start and end markers from the published output | Yes, via `Add ignore block macro` |
 
 ## Attachment publishing
 

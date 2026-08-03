@@ -3,7 +3,7 @@ import MarkdownIt from 'markdown-it';
 import { type AttachmentRef } from '../types';
 import { sha1Hex } from '../utils/hash';
 import { resolveAttachmentFile } from './attachmentUploader';
-import { FrontmatterFields, type Frontmatter } from '../frontmatter/handler';
+import { FrontmatterFields } from '../frontmatter/handler';
 
 export interface DiagramBlock {
 	/** Source sha1 hex. Used as the cache key and filename prefix. */
@@ -326,8 +326,8 @@ function resolveConfluenceUrlForWikilink(app: App, linkpath: string, sourcePath:
 	const target = app.metadataCache.getFirstLinkpathDest(targetPath, sourcePath);
 	if (!target) return null;
 
-	const frontmatter = app.metadataCache.getFileCache(target)?.frontmatter as Frontmatter | undefined;
-	const value = frontmatter?.[FrontmatterFields.URL];
+	const frontmatter = app.metadataCache.getFileCache(target)?.frontmatter;
+	const value: unknown = frontmatter?.[FrontmatterFields.URL];
 	return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 

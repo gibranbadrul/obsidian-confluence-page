@@ -1,6 +1,5 @@
 import { type LogEntry } from '../types';
 
-const PREFIX = '[Confluence Page Publisher]';
 
 export class Logger {
 	private logs: LogEntry[] = [];
@@ -24,17 +23,14 @@ export class Logger {
 
 	info(message: string, details?: string): void {
 		this.push('info', message, details);
-		console.log(PREFIX, message, details ?? '');
 	}
 
 	warn(message: string, details?: string): void {
 		this.push('warn', message, details);
-		console.warn(PREFIX, message, details ?? '');
 	}
 
 	error(message: string, details?: string): void {
 		this.push('error', message, details);
-		console.error(PREFIX, message, details ?? '');
 	}
 
 	private push(level: LogEntry['level'], message: string, details?: string): void {

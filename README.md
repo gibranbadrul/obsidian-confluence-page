@@ -35,6 +35,7 @@
 * [What gets converted](#what-gets-converted)
 * [Not converted yet](#not-converted-yet)
 * [Internal macros](#internal-macros)
+* [Attachment publishing](#attachment-publishing)
 * [Diagram rendering](#diagram-rendering)
 * [Settings](#settings)
 * [Authentication](#authentication)
@@ -47,9 +48,12 @@
 * [Development](#development)
     * [Prerequisites](#prerequisites)
     * [Setup](#setup)
+    * [Available targets](#available-targets)
     * [Build](#build)
     * [Development build](#development-build)
+    * [Quality checks](#quality-checks)
     * [Deploy to a local vault](#deploy-to-a-local-vault)
+    * [Uninstall from a local vault](#uninstall-from-a-local-vault)
     * [Release](#release)
 * [License](#license)
 
@@ -58,7 +62,7 @@
 
 ---
 
-Obsidian plugin that publishes your notes to Confluence as Confluence Storage XHTML, with frontmatter page binding, attachment uploads, diagram rendering, and content-hash based skips.
+Obsidian plugin that publishes your notes to Confluence as Confluence Storage XHTML, with frontmatter page binding, attachment uploads, diagram rendering, automatic bound-note links, and content-hash based skips.
 
 ## Install
 
@@ -120,15 +124,18 @@ confluence_page_id: "123456"
 confluence_last_published_at: "2026-07-07T10:30:00.000Z"
 confluence_content_hash: "..."
 confluence_attachments:
-  image.png:
-    hash: "..."
-    id: "..."
+  "123456":
+    image.png:
+      hash: "..."
+      id: "..."
 ---
 ```
 
 ### Create a new child page
 
-Use `confluence_parent_url` when the note should create a new child page under an existing Confluence page:
+Use `confluence_parent_url` when the note should create a new page under an existing Confluence container.
+
+Parent page example:
 
 ```yaml
 ---
@@ -138,30 +145,43 @@ confluence_title: "New Child Page"
 ---
 ```
 
-On first publish, the plugin creates the child page and writes the resolved page URL back into `confluence_url`.
+On Confluence Cloud, the parent may also be a folder URL:
 
-After that, future publishes update the same page directly.
+```yaml
+---
+confluence_url:
+confluence_parent_url: "https://example.atlassian.net/wiki/spaces/DOC/folder/200/Documentation"
+confluence_title: "New Folder Page"
+---
+```
+
+For a parent page, the plugin creates the new page directly beneath that page. For a Cloud folder, it creates the page in the folder's space and then moves it into the folder.
+
+Folder parent URLs are supported only when **Confluence type** is set to **Cloud**. Confluence Server / Data Center requires a parent page URL.
+
+After the first successful creation, the plugin writes the resolved page URL and ID into the note. Future publishes update that same page directly.
 
 ### Trigger publishing
 
-| Method                                        | Behavior                                            |
-|-----------------------------------------------|-----------------------------------------------------|
-| **Command Palette** > Publish current note    | Publishes the active note                           |
-| **Command Palette** > Publish all bound notes | Publishes every note with Confluence frontmatter    |
-| **Ribbon icon**                               | Publishes all bound notes                           |
-| **Editor right-click**                        | Publishes the current note or inserts frontmatter   |
-| **File tree right-click on note**             | Publishes that note or inserts frontmatter          |
-| **File tree right-click on folder**           | Publishes bound notes under that folder recursively |
+| Method                                        | Behavior                                                           |
+|-----------------------------------------------|--------------------------------------------------------------------|
+| **Command Palette** > Publish current note    | Publishes the active note                                          |
+| **Command Palette** > Publish all bound notes | Publishes every note with Confluence frontmatter                   |
+| **Ribbon icon**                               | Publishes all bound notes                                          |
+| **Editor right-click**                        | Opens a Confluence submenu for publishing and ignore helpers       |
+| **File tree right-click on note**             | Publishes a bound note or inserts frontmatter into an unbound note |
+| **File tree right-click on folder**           | Publishes bound notes under that folder recursively                |
 
 ### Helper commands
 
-| Command                                         | Behavior                                                     |
-|-------------------------------------------------|--------------------------------------------------------------|
-| Insert Confluence frontmatter into current note | Adds the publisher frontmatter fields                        |
-| Create bound note                               | Creates a note already bound to a Confluence page URL        |
-| Add ignore block macro                          | Inserts a block that is removed from Confluence output       |
-| Export storage preview of current note          | Writes `example.preview.xml` with generated Storage XHTML    |
-| Validate credentials                            | Checks the current Confluence connection                     |
+| Command                                         | Behavior                                                       |
+|-------------------------------------------------|----------------------------------------------------------------|
+| Insert Confluence frontmatter into current note | Adds the publisher frontmatter fields                          |
+| Create bound note                               | Creates a note already bound to a Confluence page URL          |
+| Add ignore line macro                           | Marks the current line or selected lines as excluded           |
+| Add ignore block macro                          | Wraps the selection in a block excluded from Confluence output |
+| Export storage preview of current note          | Writes `example.preview.xml` with generated Storage XHTML      |
+| Validate credentials                            | Checks the current Confluence connection                       |
 
 ## Frontmatter
 
@@ -195,17 +215,19 @@ confluence_content_hash:
 ---
 ```
 
-| Field                          | Description                                                |
-|--------------------------------|------------------------------------------------------------|
-| `confluence_url`               | Target Confluence page URL                                 |
-| `confluence_parent_url`        | Parent page URL used to create a child page                |
-| `confluence_title`             | Optional Confluence page title override                    |
-| `confluence_page_id`           | Resolved Confluence page ID                                |
-| `confluence_last_published_at` | Last successful publish timestamp                          |
-| `confluence_content_hash`      | Content hash used to skip unchanged notes                  |
-| `confluence_attachments`       | Attachment cache used to skip unchanged attachment uploads |
+| Field                          | Description                                                                        |
+|--------------------------------|------------------------------------------------------------------------------------|
+| `confluence_url`               | Target Confluence page URL                                                         |
+| `confluence_parent_url`        | Parent page URL, or Confluence Cloud folder URL, used for first-time page creation |
+| `confluence_title`             | Optional Confluence page title override                                            |
+| `confluence_page_id`           | Resolved Confluence page ID                                                        |
+| `confluence_last_published_at` | Last successful publish timestamp                                                  |
+| `confluence_content_hash`      | Content hash used to skip unchanged notes                                          |
+| `confluence_attachments`       | Per-page attachment cache used to skip unchanged uploads                           |
 
-Creating a root page directly from a space key is planned, but the current version creates new pages under an existing parent page.
+The attachment cache is grouped by Confluence page ID so attachment metadata is not reused accidentally when the note is rebound to another page. Existing flat attachment metadata is migrated when a target page ID is available.
+
+Creating a root page directly from a space key is planned. New pages currently require an existing parent page, or a folder when using Confluence Cloud.
 
 ## What gets converted
 
@@ -228,8 +250,8 @@ Creating a root page directly from a space key is planned, but the current versi
 | Fenced code blocks                          | Confluence code macros                 |
 | Code block language                         | Preserved when available               |
 | Indented code blocks                        | Confluence code macros                 |
-| Obsidian wikilinks `[[Note]]`               | Readable text                          |
-| Obsidian wikilink aliases `[[Note\|Alias]]` | Alias text                             |
+| Obsidian wikilinks `[[Note]]`               | Confluence link when the target note is bound; readable text otherwise |
+| Obsidian wikilink aliases `[[Note\|Alias]]` | Same resolution with the alias used as link text                    |
 | Obsidian callouts `> [!note]`               | Confluence structured macros           |
 | Local Markdown images                       | Confluence attachments                 |
 | Obsidian image embeds                       | Confluence attachments                 |
@@ -244,7 +266,7 @@ Creating a root page directly from a space key is planned, but the current versi
 |-------------------------------------|----------------------------------------------------------------|
 | Highlight `==text==`                | Kept as plain text                                             |
 | Task lists `- [ ]` / `- [x]`        | Kept as text markers                                           |
-| Heading/block wikilinks             | Converted to readable text, not resolved                       |
+| Heading/block wikilinks             | Resolve the target page when bound, but do not preserve the heading or block anchor |
 | Non-image file embeds               | Uploaded, but richer attachment rendering is planned           |
 | Footnotes                           | Kept as plain text                                             |
 | Math / LaTeX                        | Kept as plain text                                             |
@@ -260,7 +282,7 @@ Confluence Page Publisher supports a few internal comment macros. These macros a
 
 | Macro                                                                 | Scope       | Behavior                                                                       | UI helper                         |
 |-----------------------------------------------------------------------|-------------|--------------------------------------------------------------------------------|-----------------------------------|
-| `<!-- confluence:ignore-line -->`                                     | Single line | Removes the whole line from the published output                               | Not yet                           |
+| `<!-- confluence:ignore-line -->`                                     | Single line | Removes the whole line from the published output                               | Yes, via `Add ignore line macro`  |
 | `<!-- confluence:ignore-start -->` + `<!-- confluence:ignore-end -->` | Block       | Removes everything between the start and end markers from the published output | Yes, via `Add ignore block macro` |
 
 Example ignore line:
@@ -268,6 +290,8 @@ Example ignore line:
 ```md
 <!-- confluence:ignore-line --> This line will not be published.
 ```
+
+`Add ignore line macro` adds the marker to the current line. When multiple lines are selected, it adds the marker to every selected line and skips lines that are already marked.
 
 Example ignore block:
 
@@ -282,6 +306,20 @@ This whole block will not be published.
 
 <!-- confluence:ignore-end -->
 ```
+
+## Attachment publishing
+
+When local attachment uploads are enabled, the publisher:
+
+1. Resolves local Markdown images and Obsidian embeds from the vault
+2. Calculates a content hash for each attachment
+3. Reuses unchanged attachment metadata from `confluence_attachments`
+4. Updates changed attachments using the cached attachment ID when possible
+5. Falls back to filename lookup and Confluence's create-or-update endpoint when the direct update fails
+
+Common image formats, including SVG (`image/svg+xml`), are supported. The fallback update flow is useful for Confluence instances that reject a direct attachment-data update for some file types.
+
+Attachment filenames must be unique within a published page because Confluence addresses page attachments by filename.
 
 ## Diagram rendering
 
@@ -311,11 +349,13 @@ Settings > Community plugins > Confluence Page Publisher > Settings
 | Page defaults       | Template folder, title property, auto-install template |
 | Publishing scope    | Scan folders and ignore patterns                       |
 | Publishing metadata | Frontmatter field mapping                              |
-| Attachments         | Upload toggle and max file size                        |
-| Diagram rendering   | Mermaid and PlantUML rendering options                 |
+| Publishing assets   | Attachment upload toggle and max file size             |
+| Content conversion  | Mermaid and PlantUML rendering options                 |
 | Interface           | Status bar and notices                                 |
 
 ## Authentication
+
+Changes to the base URL, Confluence type, authentication type, account, or selected key-vault secret are applied to the publisher connection without requiring an Obsidian restart. Use **Validate credentials** after changing connection settings.
 
 ### Atlassian Cloud
 
@@ -406,7 +446,7 @@ Here is what it does:
 
 - One-way publishing only
 - Confluence edits are not pulled back into Obsidian
-- New page creation currently requires an existing parent page URL
+- New page creation requires an existing parent page URL, or a folder URL on Confluence Cloud
 - Root page creation from `confluence_space_key` is planned
 - Task lists, footnotes, math, tags-to-labels, note transclusion, and semantic image captions are planned
 - Raw HTML is not executed
@@ -423,31 +463,90 @@ Here is what it does:
 
 ```bash
 git clone https://github.com/gibranbadrul/obsidian-confluence-page.git
-cd confluence-page
+cd obsidian-confluence-page
 bun install
 ```
+
+### Available targets
+
+Run:
+
+```bash
+make help
+```
+
+The main targets are:
+
+| Target                     | Behavior                                              |
+|----------------------------|-------------------------------------------------------|
+| `make dev`                 | Starts the development build watcher                  |
+| `make lint`                | Runs ESLint                                           |
+| `make test`                | Runs the unit test suite                              |
+| `make check`               | Runs lint, tests, and the production build            |
+| `make build`               | Builds and validates the plugin files in `dist/`      |
+| `make install`             | Builds and installs the plugin into a local vault     |
+| `make uninstall`           | Removes the plugin from the configured local vault    |
+| `make clean`               | Removes generated build artifacts                     |
 
 ### Build
 
 ```bash
-bun run build
+make build
+```
+
+The build must produce:
+
+```text
+dist/main.js
+dist/manifest.json
+dist/styles.css
 ```
 
 ### Development build
 
 ```bash
-bun run dev
+make dev
+```
+
+### Quality checks
+
+Run the complete local validation workflow:
+
+```bash
+make check
+```
+
+Individual checks are also available:
+
+```bash
+make lint
+make test
 ```
 
 ### Deploy to a local vault
 
+Configure either the vault root:
+
 ```bash
-bun run build
-mkdir -p "<vault>/.obsidian/plugins/confluence-page-publisher"
-cp dist/main.js dist/manifest.json dist/styles.css "<vault>/.obsidian/plugins/confluence-page-publisher/"
+make install OBSIDIAN_VAULT="/path/to/vault"
 ```
 
-Restart Obsidian or reload the plugin.
+or the complete plugin directory:
+
+```bash
+make install \
+  OBSIDIAN_PLUGIN_DIR="/path/to/vault/.obsidian/plugins/confluence-page-publisher"
+```
+
+The target builds the plugin and copies `main.js`, `manifest.json`, and `styles.css` into the destination. Restart Obsidian or reload the plugin after installation.
+
+### Uninstall from a local vault
+
+Use the same destination variable used during installation:
+
+```bash
+make uninstall OBSIDIAN_VAULT="/path/to/vault"
+```
 
 ### Release
 

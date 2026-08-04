@@ -1,10 +1,40 @@
 [![image](assets/obsidian-confluence-page-banner.png)](https://github.com/gibranbadrul/obsidian-confluence-page)
 
+## [1.1.0](https://github.com/gibranbadrul/obsidian-confluence-page/compare/1.0.2..1.1.0) - 2026-08-04
+
+### ⛰️  Features
+
+- *(confluence)* Auto-link page references ([#5](<REPO>/issues/5)) - ([a151080](https://github.com/gibranbadrul/obsidian-confluence-page/commit/a151080989e64669a8f946e243e6c2d05a7043d5))
+- *(confluence)* Support Cloud folder parent URLs ([#3](<REPO>/issues/3)) - ([65a5ac5](https://github.com/gibranbadrul/obsidian-confluence-page/commit/65a5ac583b76d5a4224b46e96a681b95e13f72ae))
+- Add ignore-line UI helper and refresh auth settings ([#8](<REPO>/issues/8)) - ([5937b3b](https://github.com/gibranbadrul/obsidian-confluence-page/commit/5937b3be388df49fb78954c4b9d123cafe09d189))
+
+### 🐛 Bug Fixes
+
+- *(confluence)* Handle SVG attachment update failures ([#7](<REPO>/issues/7)) - ([6c987af](https://github.com/gibranbadrul/obsidian-confluence-page/commit/6c987af8ae367b812271e07dce7fb4268cfd06bb))
+- Align ESLint config with obsidianmd recommended rules ([#9](<REPO>/issues/9)) - ([9432750](https://github.com/gibranbadrul/obsidian-confluence-page/commit/9432750f1e3f819c308377dc7f974104a567c62d))
+
+### 📚 Documentation
+
+- Update README.md - ([bfce17f](https://github.com/gibranbadrul/obsidian-confluence-page/commit/bfce17fada992bd13826ac0d5d46b3eaac66894d))
+
+### 🧪 Testing
+
+- Add Confluence attachment upload coverage - ([6899e53](https://github.com/gibranbadrul/obsidian-confluence-page/commit/6899e537eda35d4b66d44e09892ed9fb4bd9853c))
+
+### ⚙️ Miscellaneous Tasks
+
+- Add Makefile - ([d4962c0](https://github.com/gibranbadrul/obsidian-confluence-page/commit/d4962c09aacfd9f80189793efff273fb4f29ca44))
+
+
 ## [1.0.2](https://github.com/gibranbadrul/obsidian-confluence-page/compare/1.0.1..1.0.2) - 2026-07-08
 
 ### 🐛 Bug Fixes
 
 - Confluence attachment upload xsrf-compatible ([#1](<REPO>/issues/1)) - ([e2015cb](https://github.com/gibranbadrul/obsidian-confluence-page/commit/e2015cba614c6ce91ba384a80de065d5011c6cf8))
+
+### ⚙️ Miscellaneous Tasks
+
+- *(release)* Bump version to 1.0.2 - ([3a74543](https://github.com/gibranbadrul/obsidian-confluence-page/commit/3a74543d55e2f1b8ba880f9e649743dd27ec08e4))
 
 
 ## [1.0.1](https://github.com/gibranbadrul/obsidian-confluence-page/compare/1.0.0..1.0.1) - 2026-07-07

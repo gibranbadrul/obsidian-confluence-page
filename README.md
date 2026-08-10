@@ -172,14 +172,15 @@ After the first successful creation, the plugin writes the resolved page URL and
 
 ### Helper commands
 
-| Command                                         | Behavior                                                       |
-|-------------------------------------------------|----------------------------------------------------------------|
-| Insert Confluence frontmatter into current note | Adds the publisher frontmatter fields                          |
-| Create bound note                               | Creates a note already bound to a Confluence page URL          |
-| Add ignore line macro                           | Marks the current line or selected lines as excluded           |
-| Add ignore block macro                          | Wraps the selection in a block excluded from Confluence output |
-| Export storage preview of current note          | Writes `example.preview.xml` with generated Storage XHTML      |
-| Validate credentials                            | Checks the current Confluence connection                       |
+| Command                                         | Behavior                                                        |
+|-------------------------------------------------|-----------------------------------------------------------------|
+| Insert Confluence frontmatter into current note | Adds the publisher frontmatter fields                           |
+| Create bound note                               | Creates a note already bound to a Confluence page URL           |
+| Add ignore line macro                           | Marks the current line or selected lines as excluded            |
+| Add ignore block macro                          | Wraps the selection in a block excluded from Confluence output  |
+| Add table of contents macro                     | Inserts a marker that renders as a Confluence table of contents |
+| Export storage preview of current note          | Writes `example.preview.xml` with generated Storage XHTML       |
+| Validate credentials                            | Checks the current Confluence connection                        |
 
 ## Frontmatter
 
@@ -257,6 +258,7 @@ Creating a root page directly from a space key is planned. New pages currently r
 | Image alt text            | Preserved when available                                               |
 | Mermaid blocks            | Rendered image attachment when enabled                                 |
 | PlantUML blocks           | Rendered image attachment when enabled                                 |
+| `<!-- confluence:toc -->` | Confluence table of contents macro                                     |
 
 ## Not converted yet
 

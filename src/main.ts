@@ -353,6 +353,14 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			},
 		});
 		this.addCommand({
+			id: 'insert-confluence-toc',
+			name: t('command.insertConfluenceToc'),
+			editorCallback: (editor: Editor, view: MarkdownView) => {
+				if (!view.file) { new Notice(t('notice.noteNotOpen')); return; }
+				this.insertConfluenceToc(editor);
+			},
+		});
+		this.addCommand({
 			id: 'export-storage-preview',
 			name: t('command.exportStoragePreview'),
 			checkCallback: (checking) => {
@@ -436,6 +444,13 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 		new Notice(t('notice.ignoreBlockInserted'));
 	}
 
+	private insertConfluenceToc(editor: Editor): void {
+		const cursor = editor.getCursor();
+		const prefix = cursor.ch === 0 ? '' : '\n';
+		editor.replaceSelection(`${prefix}${CONFLUENCE_TOC_MARKER}\n`);
+		new Notice(t('notice.tocInserted'));
+	}
+
 	private registerMenuIntegrations(): void {
 		// Editor context menu: Confluence publishing and macro helpers are grouped together.
 		this.registerEvent(this.app.workspace.on('editor-menu', (menu: Menu, editor: Editor, view: MarkdownView) => {
@@ -507,6 +522,11 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			.setTitle(t('menu.addIgnoreBlockMacro'))
 			.setIcon('eye-off')
 			.onClick(() => { this.insertConfluenceIgnoreBlock(editor); }));
+
+		menu.addItem((item) => item
+			.setTitle(t('menu.addTocMacro'))
+			.setIcon('list')
+			.onClick(() => { this.insertConfluenceToc(editor); }));
 	}
 
 	/**
@@ -595,6 +615,7 @@ interface SubmenuCapableMenuItem {
 }
 
 const CONFLUENCE_IGNORE_LINE_MARKER = '<!-- confluence:ignore-line -->';
+const CONFLUENCE_TOC_MARKER = '<!-- confluence:toc -->';
 
 function hasConfluenceIgnoreLineMarker(lineText: string): boolean {
 	return /^\s*<!--\s*confluence:ignore-line\s*-->/i.test(lineText);

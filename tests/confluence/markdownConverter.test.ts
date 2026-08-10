@@ -135,6 +135,29 @@ describe('MarkdownConverter', () => {
 		expect(html).toContain('<![CDATA[const value = 1;]]>');
 	});
 
+	it('converts a standalone toc marker to a Confluence table of contents macro', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert([
+			'# Title',
+			'',
+			'<!-- confluence:toc -->',
+			'',
+			'Body text',
+		].join('\n'), 'note.md', createContext());
+
+		expect(html).toContain('<ac:structured-macro ac:name="toc" />');
+		expect(html).not.toContain('<p><ac:structured-macro');
+		expect(html).toContain('Body text');
+	});
+
+	it('ignores a toc marker written inside a fenced code block', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('```markdown\n<!-- confluence:toc -->\n```', 'note.md', createContext());
+
+		expect(html).not.toContain('<ac:structured-macro ac:name="toc"');
+		expect(html).toContain('confluence:toc');
+	});
+
 	it('keeps Obsidian syntax inside code blocks unchanged', async () => {
 		const converter = new MarkdownConverter(createApp());
 		const html = await converter.convert('```markdown\n![[image.png]]\n[[Note|Alias]]\n```', 'note.md', createContext());

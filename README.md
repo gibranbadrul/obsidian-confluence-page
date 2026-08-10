@@ -172,14 +172,15 @@ After the first successful creation, the plugin writes the resolved page URL and
 
 ### Helper commands
 
-| Command                                         | Behavior                                                       |
-|-------------------------------------------------|----------------------------------------------------------------|
-| Insert Confluence frontmatter into current note | Adds the publisher frontmatter fields                          |
-| Create bound note                               | Creates a note already bound to a Confluence page URL          |
-| Add ignore line macro                           | Marks the current line or selected lines as excluded           |
-| Add ignore block macro                          | Wraps the selection in a block excluded from Confluence output |
-| Export storage preview of current note          | Writes `example.preview.xml` with generated Storage XHTML      |
-| Validate credentials                            | Checks the current Confluence connection                       |
+| Command                                         | Behavior                                                        |
+|-------------------------------------------------|-----------------------------------------------------------------|
+| Insert Confluence frontmatter into current note | Adds the publisher frontmatter fields                           |
+| Create bound note                               | Creates a note already bound to a Confluence page URL           |
+| Add ignore line macro                           | Marks the current line or selected lines as excluded            |
+| Add ignore block macro                          | Wraps the selection in a block excluded from Confluence output  |
+| Add table of contents macro                     | Inserts a marker that renders as a Confluence table of contents |
+| Export storage preview of current note          | Writes `example.preview.xml` with generated Storage XHTML       |
+| Validate credentials                            | Checks the current Confluence connection                        |
 
 ## Frontmatter
 
@@ -257,6 +258,7 @@ Creating a root page directly from a space key is planned. New pages currently r
 | Image alt text            | Preserved when available                                               |
 | Mermaid blocks            | Rendered image attachment when enabled                                 |
 | PlantUML blocks           | Rendered image attachment when enabled                                 |
+| Internal Macros           | See [Internal macros](#internal-macros) for details                    |
 
 ## Not converted yet
 
@@ -278,10 +280,11 @@ Creating a root page directly from a space key is planned. New pages currently r
 
 Confluence Page Publisher supports a few internal comment macros. These macros are only used by the plugin before publishing. They are not sent to Confluence.
 
-| Scope       | Behavior                                                                       | UI helper                         |
-|-------------|--------------------------------------------------------------------------------|-----------------------------------|
-| Single line | Removes the whole line from the published output                               | Yes, via `Add ignore line macro`  |
-| Block       | Removes everything between the start and end markers from the published output | Yes, via `Add ignore block macro` |
+| Scope       | Behavior                                                                       | UI helper                                |
+|-------------|--------------------------------------------------------------------------------|------------------------------------------|
+| Single line | Removes the whole line from the published output                               | Yes, via `Add ignore line macro`         |
+| Block       | Removes everything between the start and end markers from the published output | Yes, via `Add ignore block macro`        |
+| TOC         | Inserts a Confluence table of contents macro                                   | Yes, via `Add table of contents macro`   |
 
 ## Attachment publishing
 

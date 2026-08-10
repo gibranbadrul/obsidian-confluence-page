@@ -230,6 +230,20 @@ export class MarkdownConverter {
 		md.renderer.rules.html_block = () => '';
 		md.renderer.rules.html_inline = () => '';
 
+		// toc: a standalone `<!-- confluence:toc -->` line becomes a Confluence table of contents macro.
+		// Registered as a block rule (rather than string replacement) so it never fires inside fenced/indented code.
+		md.block.ruler.before('paragraph', 'confluence_toc', (state, startLine, _endLine, silent) => {
+			const pos = state.bMarks[startLine]! + state.tShift[startLine]!;
+			const max = state.eMarks[startLine]!;
+			const line = state.src.slice(pos, max);
+			if (!CONFLUENCE_TOC_MARKER_RE.test(line)) return false;
+			if (silent) return true;
+			state.line = startLine + 1;
+			state.push('confluence_toc', '', 0);
+			return true;
+		});
+		md.renderer.rules.confluence_toc = () => renderAcToc();
+
 		return md;
 	}
 }
@@ -470,6 +484,12 @@ function renderAcCode(language: string, code: string): string {
 function renderAcImage(filename: string, alt: string): string {
 	const altPart = alt ? ` ac:alt="${escapeAttr(alt)}"` : '';
 	return `<ac:image${altPart}><ri:attachment ri:filename="${escapeAttr(filename)}" /></ac:image>`;
+}
+
+const CONFLUENCE_TOC_MARKER_RE = /^<!--\s*confluence:toc\s*-->\s*$/i;
+
+function renderAcToc(): string {
+	return `<ac:structured-macro ac:name="toc" />`;
 }
 
 function postProcessHtml(html: string, _ctx: ConvertContext): string {

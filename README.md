@@ -258,7 +258,7 @@ Creating a root page directly from a space key is planned. New pages currently r
 | Image alt text            | Preserved when available                                               |
 | Mermaid blocks            | Rendered image attachment when enabled                                 |
 | PlantUML blocks           | Rendered image attachment when enabled                                 |
-| `<!-- confluence:toc -->` | Confluence table of contents macro                                     |
+| Internal Macros           | See [Internal macros](#internal-macros) for details                    |
 
 ## Not converted yet
 
@@ -280,10 +280,11 @@ Creating a root page directly from a space key is planned. New pages currently r
 
 Confluence Page Publisher supports a few internal comment macros. These macros are only used by the plugin before publishing. They are not sent to Confluence.
 
-| Scope       | Behavior                                                                       | UI helper                         |
-|-------------|--------------------------------------------------------------------------------|-----------------------------------|
-| Single line | Removes the whole line from the published output                               | Yes, via `Add ignore line macro`  |
-| Block       | Removes everything between the start and end markers from the published output | Yes, via `Add ignore block macro` |
+| Scope       | Behavior                                                                       | UI helper                                |
+|-------------|--------------------------------------------------------------------------------|------------------------------------------|
+| Single line | Removes the whole line from the published output                               | Yes, via `Add ignore line macro`         |
+| Block       | Removes everything between the start and end markers from the published output | Yes, via `Add ignore block macro`        |
+| TOC         | Inserts a Confluence table of contents macro                                   | Yes, via `Add table of contents macro`   |
 
 ## Attachment publishing
 

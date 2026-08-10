@@ -36,6 +36,7 @@ export const en = {
 		ignoreLineInserted: 'Confluence ignore line macro inserted',
 		ignoreLineAlreadyExists: 'Selected line(s) already contain the Confluence ignore line macro',
 		ignoreBlockInserted: 'Confluence ignore block macro inserted',
+		tocInserted: 'Confluence table of contents macro inserted',
 	},
 
 	// ===== Summary fragments =====
@@ -51,6 +52,7 @@ export const en = {
 		insertTemplate: 'Insert Confluence frontmatter into current note',
 		insertConfluenceIgnoreLine: 'Add ignore line macro',
 		insertConfluenceIgnoreBlock: 'Add ignore block macro',
+		insertConfluenceToc: 'Add table of contents macro',
 		createBoundNote: 'Create bound note',
 		exportStoragePreview: 'Export storage preview of current note',
 		validateAuth: 'Validate credentials',
@@ -63,6 +65,7 @@ export const en = {
 		insertFrontmatter: 'Insert Confluence frontmatter',
 		addIgnoreLineMacro: 'Add ignore line macro',
 		addIgnoreBlockMacro: 'Add ignore block macro',
+		addTocMacro: 'Add table of contents macro',
 		publishFolder: 'Publish folder to Confluence',
 	},
 
@@ -212,7 +215,7 @@ export const en = {
 	template: {
 		title: '# Title',
 		usage:
-			'> Pick one of two publishing flows:\n> 1. Existing Confluence page → put the page URL in `confluence_url`.\n> 2. New child page → put the parent page URL in `confluence_parent_url`. On Confluence Cloud only, this may also be a folder URL. Server / Data Center supports parent page URLs only. On first publish, the plugin creates a child page named after this note, then writes the new URL back to `confluence_url`.\n> The other fields (`confluence_page_id`, `confluence_last_published_at`, `confluence_content_hash`) are maintained automatically.\n> Optional: set `confluence_title` to override the Confluence page title.\n>\n> Optional Confluence-only source markers:\n> - `<!-- confluence:ignore-start --> ... <!-- confluence:ignore-end -->` removes Obsidian-only content from published pages.',
+			'> Pick one of two publishing flows:\n> 1. Existing Confluence page → put the page URL in `confluence_url`.\n> 2. New child page → put the parent page URL in `confluence_parent_url`. On Confluence Cloud only, this may also be a folder URL. Server / Data Center supports parent page URLs only. On first publish, the plugin creates a child page named after this note, then writes the new URL back to `confluence_url`.\n> The other fields (`confluence_page_id`, `confluence_last_published_at`, `confluence_content_hash`) are maintained automatically.\n> Optional: set `confluence_title` to override the Confluence page title.\n>\n> Optional Confluence-only source markers:\n> - `<!-- confluence:ignore-start --> ... <!-- confluence:ignore-end -->` removes Obsidian-only content from published pages.\n> - `<!-- confluence:toc -->` on its own line inserts a Confluence table of contents macro.',
 		bodyHeading: '## Body',
 		bodyPlaceholder: 'Write here…',
 		publishingPlaceholder: '<p>(publishing…)</p>',

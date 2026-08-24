@@ -3,7 +3,24 @@ import MarkdownIt from 'markdown-it';
 import { type AttachmentRef } from '../types';
 import { sha1Hex } from '../utils/hash';
 import { resolveAttachmentFile } from './attachmentUploader';
-import { FrontmatterFields } from '../frontmatter/handler';
+import {
+	buildConfluencePageLinkFingerprint,
+	extractFenceBlocks,
+	maskCodeRegions,
+	prepareMarkdownForConfluence,
+	preprocessObsidianSyntax,
+	stripFrontmatter,
+} from './obsidianSyntax';
+import { TOC_LINE_RE } from './markers';
+import {
+	detectCalloutType,
+	escapeAttr,
+	postProcessHtml,
+	renderAcCode,
+	renderAcImage,
+	renderAcToc,
+	tryDecode,
+} from './storageXhtml';
 
 export interface DiagramBlock {
 	/** Source sha1 hex. Used as the cache key and filename prefix. */
@@ -21,11 +38,6 @@ export interface ExtractedReferences {
 
 /** markdown-it env is typed as `any`; this converter only stores a callout state flag. */
 interface CalloutEnv { __calloutOpen?: boolean }
-
-interface ObsidianPreprocessContext {
-	app: App;
-	sourcePath: string;
-}
 
 export interface ConvertContext {
 	/** filename -> successfully uploaded attachment records. Used by the image renderer. */
@@ -74,7 +86,7 @@ export class MarkdownConverter {
 		const md = this.buildRenderer(ctx, fenceHashMap);
 		const html = md.render(preprocessed);
 
-		return postProcessHtml(html, ctx);
+		return postProcessHtml(html);
 	}
 
 	/** Computes a stable content hash for publish skipping. Ignored blocks are intentionally excluded. */
@@ -236,7 +248,7 @@ export class MarkdownConverter {
 			const pos = state.bMarks[startLine]! + state.tShift[startLine]!;
 			const max = state.eMarks[startLine]!;
 			const line = state.src.slice(pos, max);
-			if (!CONFLUENCE_TOC_MARKER_RE.test(line)) return false;
+			if (!TOC_LINE_RE.test(line)) return false;
 			if (silent) return true;
 			state.line = startLine + 1;
 			state.push('confluence_toc', '', 0);
@@ -246,295 +258,4 @@ export class MarkdownConverter {
 
 		return md;
 	}
-}
-
-// ============ Markdown preprocessing ============
-function stripFrontmatter(md: string): string {
-	if (!md.startsWith('---')) return md;
-	const m = md.match(/^---\n[\s\S]*?\n---\n?/);
-	if (!m) return md;
-	return md.slice(m[0].length);
-}
-
-function prepareMarkdownForConfluence(markdown: string): string {
-	const withoutIgnoredBlocks = removeIgnoredConfluenceBlocks(markdown);
-	return removeIgnoredConfluenceLines(withoutIgnoredBlocks);
-}
-
-/** Removes content wrapped by Confluence ignore markers before reference extraction, hashing, and rendering. */
-function removeIgnoredConfluenceBlocks(markdown: string): string {
-	return markdown.replace(
-		/^\s*<!--\s*confluence:ignore-start\s*-->[\s\S]*?^\s*<!--\s*confluence:ignore-end\s*-->\s*$/gim,
-		'',
-	);
-}
-
-/** Removes a single Markdown line marked as Confluence-only ignored content. */
-function removeIgnoredConfluenceLines(markdown: string): string {
-	return markdown
-		.split('\n')
-		.filter((line) => !/^\s*<!--\s*confluence:ignore-line\s*-->\s*/i.test(line))
-		.join('\n');
-}
-
-/**
- * Performs minimal Obsidian-specific preprocessing so markdown-it can parse the note sensibly.
- * - `![[file]]` -> standard Markdown image syntax. The image renderer later turns this into `ac:image`.
- * - `![[note]]` -> plain display text. Embedded notes are not Confluence page links.
- * - `[[link|alias]]` -> Confluence page link when the target note has `confluence_url`; otherwise plain text.
- * - `> [!type] Title` -> private callout marker detected by the blockquote renderer.
- */
-function preprocessObsidianSyntax(md: string, ctx: ObsidianPreprocessContext): string {
-	// Mask code regions to avoid rewriting examples that contain Obsidian syntax.
-	const { masked, restore } = maskCodeRegions(md);
-	let s = masked;
-
-	// 1. ![[...]] embed -> image attachment for asset links, plain text for embedded notes.
-	s = s.replace(/!\[\[([^\]\n|\\]+)(?:\\?\|([^\]\n]*))?\]\]/g, (_full, link: string, alias: string) => {
-		const text = (alias ?? '').trim();
-		const linkpath = link.trim();
-		if (!isLikelyAttachmentLinkpath(linkpath)) {
-			return text || displayTextFromWikilink(linkpath);
-		}
-		return `![${escapeMarkdownLinkText(text)}](${markdownLinkDestination(linkpath)})`;
-	});
-
-	// 2. [[link|alias]] / [[link]] -> Confluence link when the target note has confluence_url.
-	s = replaceObsidianPageLinks(s, ctx);
-
-	// 3. Callout header: `> [!info] Title` -> private marker.
-	// PUA markers avoid markdown-it treats underscores as emphasis syntax.
-	s = s.replace(/^(> )\[!([a-zA-Z]+)\](.*)$/gm, (_full, prefix: string, type: string, rest: string) => {
-		return `${prefix}CALLOUT:${type.toUpperCase()}${rest}`;
-	});
-
-	return restore(s);
-}
-
-function replaceObsidianPageLinks(markdown: string, ctx: ObsidianPreprocessContext): string {
-	return markdown.replace(/(^|[^!])\[\[([^\]\n|\\]+)(?:\\?\|([^\]\n]*))?\]\]/g, (_full, prefix: string, link: string, alias: string) => {
-		const linkpath = link.trim();
-		const displayText = (alias ?? '').trim() || displayTextFromWikilink(linkpath);
-		const confluenceUrl = resolveConfluenceUrlForWikilink(ctx.app, linkpath, ctx.sourcePath);
-		if (!confluenceUrl) return prefix + displayText;
-		return `${prefix}[${escapeMarkdownLinkText(displayText)}](${markdownLinkDestination(confluenceUrl)})`;
-	});
-}
-
-function buildConfluencePageLinkFingerprint(app: App, markdown: string, sourcePath: string): string {
-	const { masked } = maskCodeRegions(markdown);
-	const refs: string[] = [];
-	masked.replace(/(^|[^!])\[\[([^\]\n|\\]+)(?:\\?\|([^\]\n]*))?\]\]/g, (_full, _prefix: string, link: string) => {
-		const linkpath = link.trim();
-		const confluenceUrl = resolveConfluenceUrlForWikilink(app, linkpath, sourcePath);
-		refs.push(`${linkpath}=${confluenceUrl ?? ''}`);
-		return '';
-	});
-	return refs.join('|');
-}
-
-function resolveConfluenceUrlForWikilink(app: App, linkpath: string, sourcePath: string): string | null {
-	const targetPath = stripObsidianSubpath(linkpath).trim();
-	if (!targetPath) return null;
-
-	const target = app.metadataCache.getFirstLinkpathDest(targetPath, sourcePath);
-	if (!target) return null;
-
-	const frontmatter = app.metadataCache.getFileCache(target)?.frontmatter;
-	const value: unknown = frontmatter?.[FrontmatterFields.URL];
-	return typeof value === 'string' && value.trim() ? value.trim() : null;
-}
-
-function displayTextFromWikilink(linkpath: string): string {
-	const cleanPath = stripObsidianSubpath(linkpath);
-	const basename = cleanPath.split('/').pop() || cleanPath || linkpath;
-	return basename.replace(/\.md$/i, '');
-}
-
-function stripObsidianSubpath(linkpath: string): string {
-	return linkpath.split('#')[0]?.split('^')[0]?.trim() ?? '';
-}
-
-function isLikelyAttachmentLinkpath(linkpath: string): boolean {
-	const cleanPath = stripObsidianSubpath(linkpath);
-	const name = cleanPath.split('/').pop() ?? cleanPath;
-	return /\.[a-z0-9]{1,12}$/i.test(name) && !/\.md$/i.test(name);
-}
-
-function escapeMarkdownLinkText(value: string): string {
-	return value.replace(/\\/g, '\\\\').replace(/\[/g, '\\[').replace(/\]/g, '\\]');
-}
-
-function markdownLinkDestination(value: string): string {
-	return encodeURI(value).replace(/\(/g, '%28').replace(/\)/g, '%29');
-}
-
-const CODE_MASK_OPEN = '';
-const CODE_MASK_CLOSE = '';
-const CODE_MASK_RE = /(\d+)/g;
-
-/**
- * Masks fenced code and inline code regions with placeholders.
- * This prevents regex-based Obsidian preprocessing from modifying code examples.
- */
-function maskCodeRegions(md: string): { masked: string; restore: (s: string) => string } {
-	const buf: string[] = [];
-	const stash = (text: string): string => {
-		const idx = buf.length;
-		buf.push(text);
-		return `${CODE_MASK_OPEN}${idx}${CODE_MASK_CLOSE}`;
-	};
-
-	// 1. Fenced code blocks using ``` or ~~~.
-	let masked = md.replace(
-		/(^|\n)([ \t]*)(`{3,}|~{3,})([^\n]*\n[\s\S]*?\n)\2\3[ \t]*(?=\n|$)/g,
-		(_full, lead: string, indent: string, fence: string, body: string) => {
-			return `${lead}${stash(`${indent}${fence}${body}${indent}${fence}`)}`;
-		},
-	);
-
-	// 2. Inline code using balanced backticks, without newlines.
-	masked = masked.replace(/(`+)([^`\n]+?)\1(?!`)/g, (full) => stash(full));
-
-	const restore = (s: string): string =>
-		s.replace(CODE_MASK_RE, (_, idxStr: string) => buf[parseInt(idxStr, 10)] ?? '');
-
-	return { masked, restore };
-}
-
-interface FenceBlock { lang: string; content: string; }
-
-/** Extracts fenced code blocks from raw Markdown. This intentionally stays small and predictable. */
-function extractFenceBlocks(markdown: string): FenceBlock[] {
-	const out: FenceBlock[] = [];
-	const lines = markdown.split('\n');
-	let i = 0;
-	while (i < lines.length) {
-		const line = lines[i]!;
-		const m = line.match(/^(\s*)(`{3,}|~{3,})\s*([\w-]*)\s*$/);
-		if (!m) { i += 1; continue; }
-		const indent = m[1]!.length;
-		const fence = m[2]!;
-		const lang = (m[3] ?? '').toLowerCase();
-		const start = i + 1;
-		i = start;
-		while (i < lines.length) {
-			const closing = lines[i]!.match(/^(\s*)(`{3,}|~{3,})\s*$/);
-			if (closing && closing[2]!.startsWith(fence[0]!) && closing[2]!.length >= fence.length && closing[1]!.length === indent) {
-				break;
-			}
-			i += 1;
-		}
-		const content = lines.slice(start, i).join('\n');
-		out.push({ lang, content });
-		i += 1;
-	}
-	return out;
-}
-
-interface CalloutType { type: string; macro: string; }
-
-/** Detects whether the first inline token inside a blockquote is an Obsidian callout marker. */
-function detectCalloutType(tokens: ReadonlyArray<{ type: string; content?: string; children?: Array<{ content: string }> | null }>, openIdx: number): CalloutType | null {
-	for (let i = openIdx + 1; i < tokens.length; i++) {
-		const tk = tokens[i]!;
-		if (tk.type === 'blockquote_close') return null;
-		if (tk.type !== 'inline') continue;
-		const text = (tk.children?.[0]?.content ?? tk.content ?? '');
-		const m = text.match(/^CALLOUT:([A-Z]+)/);
-		if (!m) return null;
-		const stripRe = /^CALLOUT:[A-Z]+\s*/;
-		if (tk.children?.[0]) {
-			tk.children[0].content = tk.children[0].content.replace(stripRe, '');
-		} else {
-			tk.content = tk.content?.replace(stripRe, '') ?? '';
-		}
-		const type = m[1]!;
-		return { type, macro: mapCalloutMacro(type) };
-	}
-	return null;
-}
-
-function mapCalloutMacro(type: string): string {
-	switch (type) {
-		case 'NOTE':
-		case 'INFO':
-		case 'TIP':
-		case 'HINT': return 'info';
-		case 'WARNING':
-		case 'CAUTION':
-		case 'ATTENTION': return 'warning';
-		case 'DANGER':
-		case 'ERROR':
-		case 'FAILURE':
-		case 'BUG': return 'note';
-		case 'SUCCESS':
-		case 'CHECK':
-		case 'DONE': return 'tip';
-		case 'QUOTE': return 'expand';
-		default: return 'info';
-	}
-}
-
-function renderAcCode(language: string, code: string): string {
-	const langPart = language ? `<ac:parameter ac:name="language">${escapeXml(language)}</ac:parameter>` : '';
-	return `<ac:structured-macro ac:name="code">${langPart}<ac:plain-text-body><![CDATA[${cdataSafe(code)}]]></ac:plain-text-body></ac:structured-macro>`;
-}
-
-function renderAcImage(filename: string, alt: string): string {
-	const altPart = alt ? ` ac:alt="${escapeAttr(alt)}"` : '';
-	return `<ac:image${altPart}><ri:attachment ri:filename="${escapeAttr(filename)}" /></ac:image>`;
-}
-
-const CONFLUENCE_TOC_MARKER_RE = /^<!--\s*confluence:toc\s*-->\s*$/i;
-
-function renderAcToc(): string {
-	return `<ac:structured-macro ac:name="toc" />`;
-}
-
-function postProcessHtml(html: string, _ctx: ConvertContext): string {
-	// markdown-it with xhtmlOut=true already handles common void elements, but this keeps Confluence Storage strict.
-	const voidElements = ['br', 'hr', 'img', 'input', 'meta', 'link', 'col', 'area', 'base', 'embed', 'source', 'track', 'wbr'];
-	let out = html;
-	for (const tag of voidElements) {
-		const re = new RegExp(`<${tag}\\b([^>]*?)(?<!/)>`, 'gi');
-		out = out.replace(re, `<${tag}$1 />`);
-	}
-	return stripSupplementaryChars(out).trim();
-}
-
-/**
- * Some Confluence Server installations use MySQL utf8 instead of utf8mb4.
- * Characters above U+FFFF can fail storage parsing, so they are replaced with stable ASCII placeholders.
- */
-function stripSupplementaryChars(s: string): string {
-	let out = '';
-	for (const ch of s) {
-		const cp = ch.codePointAt(0)!;
-		if (cp > 0xFFFF) {
-			out += `[U+${cp.toString(16).toUpperCase()}]`;
-		} else {
-			out += ch;
-		}
-	}
-	return out;
-}
-
-function escapeXml(s: string): string {
-	return s
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;');
-}
-
-function escapeAttr(s: string): string {
-	return escapeXml(s).replace(/"/g, '&quot;');
-}
-
-function cdataSafe(s: string): string {
-	return s.replace(/]]>/g, ']]]]><![CDATA[>');
-}
-
-function tryDecode(s: string): string {
-	try { return decodeURIComponent(s); } catch { return s; }
 }

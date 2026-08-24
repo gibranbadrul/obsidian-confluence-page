@@ -5,7 +5,7 @@ import {
 	parsePageIdFromUrl,
 	type ConfluenceParentTarget,
 } from '../confluence/urlParser';
-import { MarkdownConverter, type ConvertContext } from '../confluence/markdownConverter';
+import { MarkdownConverter, type ConvertContext, type DiagramBlock } from '../confluence/markdownConverter';
 import { AttachmentUploader } from '../confluence/attachmentUploader';
 import { MermaidRenderer } from '../confluence/mermaidRenderer';
 import { PlantUmlRenderer } from '../confluence/plantUmlRenderer';
@@ -183,33 +183,12 @@ export class PublishEngine {
 				? await this.uploader.uploadReferencedAttachments(pageId, refs.attachments, previousAttachments)
 				: { map: {} as Record<string, AttachmentRecord>, uploaded: 0, skipped: 0, failed: 0 };
 
-			const mermaidFilenameByHash = new Map<string, string>();
-			const mermaidRecords: Record<string, AttachmentRecord> = {};
-			if (this.mermaid && refs.mermaid.length > 0) {
-				const rendered = await this.mermaid.renderAll(refs.mermaid);
-				for (const r of rendered) {
-					if (!r) continue;
-					const rec = await this.uploader.uploadBytes(pageId, r.block.filename, r.png, previousAttachments);
-					if (rec) {
-						mermaidFilenameByHash.set(r.block.hash, r.block.filename);
-						mermaidRecords[r.block.filename] = rec;
-					}
-				}
-			}
-
-			const plantUmlFilenameByHash = new Map<string, string>();
-			const plantUmlRecords: Record<string, AttachmentRecord> = {};
-			if (this.plantUml && refs.plantUml.length > 0) {
-				const rendered = await this.plantUml.renderAll(refs.plantUml);
-				for (const r of rendered) {
-					if (!r) continue;
-					const rec = await this.uploader.uploadBytes(pageId, r.block.filename, r.png, previousAttachments);
-					if (rec) {
-						plantUmlFilenameByHash.set(r.block.hash, r.block.filename);
-						plantUmlRecords[r.block.filename] = rec;
-					}
-				}
-			}
+			const mermaid = await this.renderAndUploadDiagrams(this.mermaid, refs.mermaid, pageId, previousAttachments);
+			const plantUml = await this.renderAndUploadDiagrams(this.plantUml, refs.plantUml, pageId, previousAttachments);
+			const mermaidFilenameByHash = mermaid.filenameByHash;
+			const mermaidRecords = mermaid.records;
+			const plantUmlFilenameByHash = plantUml.filenameByHash;
+			const plantUmlRecords = plantUml.records;
 
 			this.deps.logger.info(`Fetching Confluence page metadata: ${path}`, `pageId=${pageId}`);
 			const page = await this.deps.api.getPage(pageId);
@@ -229,29 +208,7 @@ export class PublishEngine {
 			const storageXhtml = await this.converter.convert(markdown, path, ctx);
 
 			// The title is resolved from the configured frontmatter property, then falls back to the note filename.
-			try {
-				this.deps.logger.info(`Updating Confluence page: ${path}`, `pageId=${pageId} version=${page.version + 1}`);
-				await this.deps.api.updatePage(pageId, {
-					title: pageTitle,
-					storageXhtml,
-					newVersion: page.version + 1,
-				});
-				this.deps.logger.info(`Confluence page updated: ${path}`, `pageId=${pageId} version=${page.version + 1}`);
-			} catch (e) {
-				if (e instanceof ConfluenceApiError && e.code === 'version_conflict') {
-					this.deps.logger.warn(`Version conflict; refetching page before retry: ${path}`, `pageId=${pageId}`);
-					const refreshed = await this.deps.api.getPage(pageId);
-					this.deps.logger.info(`Retrying Confluence page update: ${path}`, `pageId=${pageId} version=${refreshed.version + 1}`);
-					await this.deps.api.updatePage(pageId, {
-						title: pageTitle,
-						storageXhtml,
-						newVersion: refreshed.version + 1,
-					});
-					this.deps.logger.info(`Confluence page updated after retry: ${path}`, `pageId=${pageId} version=${refreshed.version + 1}`);
-				} else {
-					throw e;
-				}
-			}
+			await this.updatePageWithConflictRetry(pageId, path, pageTitle, storageXhtml, page.version);
 
 			const mergedAttachments: Record<string, AttachmentRecord> = {
 				...previousAttachments,
@@ -350,6 +307,46 @@ export class PublishEngine {
 
 	private getPreviousAttachments(pageId: string, binding: NoteBinding): Record<string, AttachmentRecord> {
 		return { ...(binding.attachments?.[pageId] ?? {}) };
+	}
+
+	/** Renders a set of diagram blocks and uploads each successfully rendered PNG as an attachment. */
+	private async renderAndUploadDiagrams(
+		renderer: MermaidRenderer | PlantUmlRenderer | null,
+		blocks: DiagramBlock[],
+		pageId: string,
+		previousAttachments: Record<string, AttachmentRecord>,
+	): Promise<{ filenameByHash: Map<string, string>; records: Record<string, AttachmentRecord> }> {
+		const filenameByHash = new Map<string, string>();
+		const records: Record<string, AttachmentRecord> = {};
+		if (!renderer || blocks.length === 0) return { filenameByHash, records };
+
+		const rendered = await renderer.renderAll(blocks);
+		for (const r of rendered) {
+			if (!r) continue;
+			const rec = await this.uploader.uploadBytes(pageId, r.block.filename, r.png, previousAttachments);
+			if (rec) {
+				filenameByHash.set(r.block.hash, r.block.filename);
+				records[r.block.filename] = rec;
+			}
+		}
+		return { filenameByHash, records };
+	}
+
+	/** Updates a page, retrying once with a refreshed version number if Confluence reports a version conflict. */
+	private async updatePageWithConflictRetry(pageId: string, path: string, pageTitle: string, storageXhtml: string, currentVersion: number): Promise<void> {
+		try {
+			this.deps.logger.info(`Updating Confluence page: ${path}`, `pageId=${pageId} version=${currentVersion + 1}`);
+			await this.deps.api.updatePage(pageId, { title: pageTitle, storageXhtml, newVersion: currentVersion + 1 });
+			this.deps.logger.info(`Confluence page updated: ${path}`, `pageId=${pageId} version=${currentVersion + 1}`);
+		} catch (e) {
+			if (!(e instanceof ConfluenceApiError) || e.code !== 'version_conflict') throw e;
+
+			this.deps.logger.warn(`Version conflict; refetching page before retry: ${path}`, `pageId=${pageId}`);
+			const refreshed = await this.deps.api.getPage(pageId);
+			this.deps.logger.info(`Retrying Confluence page update: ${path}`, `pageId=${pageId} version=${refreshed.version + 1}`);
+			await this.deps.api.updatePage(pageId, { title: pageTitle, storageXhtml, newVersion: refreshed.version + 1 });
+			this.deps.logger.info(`Confluence page updated after retry: ${path}`, `pageId=${pageId} version=${refreshed.version + 1}`);
+		}
 	}
 
 	/** Rebuild renderer and uploader instances after settings change. */

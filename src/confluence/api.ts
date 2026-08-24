@@ -1,5 +1,14 @@
 import { requestUrl, type RequestUrlParam, type RequestUrlResponse } from 'obsidian';
 import { encodeBase64Utf8 } from '../utils/base64';
+import { createMultipartBody } from '../utils/multipart';
+import {
+	type JsonRecord,
+	isJsonRecord,
+	readOptionalNumber,
+	readOptionalObject,
+	readOptionalString,
+	readRecordArray,
+} from '../utils/json';
 
 export class ConfluenceApiError extends Error {
 	constructor(public status: number, public code: ConfluenceErrorCode, message: string, public details?: string) {
@@ -55,8 +64,6 @@ export interface ConfluenceApiConfig {
 	/** Basic auth password/API token or Bearer PAT. */
 	apiToken: string;
 }
-
-type JsonRecord = Record<string, unknown>;
 
 const ATLASSIAN_XSRF_HEADER = 'X-Atlassian-Token';
 const ATLASSIAN_XSRF_NOCHECK = 'nocheck';
@@ -285,11 +292,11 @@ export class ConfluenceApi {
 	}
 
 	private async uploadMultipart(method: 'POST' | 'PUT', url: string, filename: string, data: ArrayBuffer, mimeType: string): Promise<RequestUrlResponse> {
-		const multipart = createMultipartBody('file', filename, data, mimeType);
+		const multipart = await createMultipartBody('file', filename, data, mimeType);
 		const requestOpts = {
 			method,
 			url,
-			contentType: `multipart/form-data; boundary=${multipart.boundary}`,
+			contentType: multipart.contentType,
 			body: multipart.body,
 		};
 
@@ -407,32 +414,6 @@ function readRequiredString(record: JsonRecord, key: string, context: string): s
 	throw new ConfluenceApiError(500, 'invalid_response', `${context}: missing string field "${key}"`);
 }
 
-function readOptionalString(record: JsonRecord, key: string): string | undefined {
-	const value = record[key];
-	return typeof value === 'string' ? value : undefined;
-}
-
-function readOptionalNumber(record: JsonRecord | undefined, key: string): number | undefined {
-	if (!record) return undefined;
-	const value = record[key];
-	return typeof value === 'number' ? value : undefined;
-}
-
-function readOptionalObject(record: JsonRecord, key: string): JsonRecord | undefined {
-	const value = record[key];
-	return isJsonRecord(value) ? value : undefined;
-}
-
-function readRecordArray(record: JsonRecord, key: string): JsonRecord[] {
-	const value = record[key];
-	if (!Array.isArray(value)) return [];
-	return value.filter(isJsonRecord);
-}
-
-function isJsonRecord(value: unknown): value is JsonRecord {
-	return !!value && typeof value === 'object' && !Array.isArray(value);
-}
-
 function xsrfHeaders(value: string): Record<string, string> {
 	return { [ATLASSIAN_XSRF_HEADER]: value };
 }
@@ -442,57 +423,3 @@ function isXsrfCheckFailed(value: unknown): boolean {
 	return value.status === 403 && /xsrf check failed/i.test(value.details ?? value.message);
 }
 
-interface MultipartBody {
-	boundary: string;
-	body: ArrayBuffer;
-}
-
-function createMultipartBody(fieldName: string, filename: string, data: ArrayBuffer, mimeType: string): MultipartBody {
-	const boundary = `----confluence-page-publisher-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-	const header = [
-		`--${boundary}`,
-		`Content-Disposition: form-data; name="${escapeMultipartHeaderValue(fieldName)}"; filename="${escapeMultipartHeaderValue(filename)}"`,
-		`Content-Type: ${mimeType}`,
-		'',
-		'',
-	].join('\r\n');
-	const minorEditPart = [
-		'',
-		`--${boundary}`,
-		'Content-Disposition: form-data; name="minorEdit"',
-		'',
-		'true',
-	].join('\r\n');
-	const footer = `\r\n--${boundary}--\r\n`;
-
-	return {
-		boundary,
-		body: concatBytes([
-			encodeUtf8Bytes(header),
-			new Uint8Array(data),
-			encodeUtf8Bytes(minorEditPart),
-			encodeUtf8Bytes(footer),
-		]),
-	};
-}
-
-function escapeMultipartHeaderValue(value: string): string {
-	return value.replace(/[\r\n]/g, '_').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-function concatBytes(parts: Uint8Array[]): ArrayBuffer {
-	const totalLength = parts.reduce((sum, part) => sum + part.byteLength, 0);
-	const output = new Uint8Array(totalLength);
-	let offset = 0;
-
-	for (const part of parts) {
-		output.set(part, offset);
-		offset += part.byteLength;
-	}
-
-	return output.buffer;
-}
-
-function encodeUtf8Bytes(input: string): Uint8Array {
-	return new TextEncoder().encode(input);
-}

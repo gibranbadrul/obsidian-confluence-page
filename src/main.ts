@@ -1,50 +1,30 @@
 import {
 	type Editor,
 	type MarkdownView,
-	type Menu,
 	Notice,
 	Plugin,
 	TFile,
-	TFolder,
-	normalizePath,
+	type TFolder,
 } from 'obsidian';
 import {
 	DEFAULT_SETTINGS,
 	type ConfluencePagePublisherSettings,
-	ConfluencePagePublisherSettingTab,
 	normalizeSettings,
 } from './settings';
+import { ConfluencePagePublisherSettingTab } from './ui/settingsTab';
 import { ConfluenceApi } from './confluence/api';
 import { MarkdownConverter } from './confluence/markdownConverter';
 import { PublishEngine } from './publish/publishEngine';
+import { buildTemplateContent, ensureFolder, installTemplateFile as installTemplateFileImpl } from './publish/template';
+import { collectBoundFilesUnder } from './publish/boundNotes';
+import { insertConfluenceIgnoreBlock, insertConfluenceIgnoreLine, insertConfluenceToc } from './editor/confluenceMacros';
 import { Logger } from './utils/logger';
 import { StatusBarManager } from './ui/statusBar';
 import { CreateBoundNoteModal } from './ui/createBoundNoteModal';
-import { FrontmatterFields, hasPublishingBinding, insertTemplateFrontmatter } from './frontmatter/handler';
+import { registerPluginMenus } from './ui/pluginMenus';
+import { insertTemplateFrontmatter } from './frontmatter/handler';
 import { PublishStatus } from './types';
 import { t } from './i18n';
-
-const TEMPLATE_FILENAME = 'confluence-note.md';
-
-function buildTemplateContent(): string {
-	return `---
-${FrontmatterFields.URL}:
-${FrontmatterFields.PARENT_URL}:
-${FrontmatterFields.CUSTOM_TITLE}:
-${FrontmatterFields.PAGE_ID}:
-${FrontmatterFields.LAST_PUBLISHED}:
-${FrontmatterFields.LAST_HASH}:
----
-
-${t('template.title')}
-
-${t('template.usage')}
-
-${t('template.bodyHeading')}
-
-${t('template.bodyPlaceholder')}
-`;
-}
 
 export default class ConfluencePagePublisherPlugin extends Plugin {
 	settings!: ConfluencePagePublisherSettings;
@@ -68,18 +48,16 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 
 		this.addSettingTab(new ConfluencePagePublisherSettingTab(this.app, this));
 		this.registerCommands();
-		this.registerMenuIntegrations();
+		registerPluginMenus(this);
 
 		if (this.settings.showStatusBar) {
 			this.statusBar = new StatusBarManager(this);
 			this.statusBar.create();
 		}
 
-
 		if (this.settings.autoInstallTemplate) {
 			await this.installTemplateFile(false);
 		}
-
 
 		this.logger.info(t('plugin.loaded'));
 	}
@@ -188,7 +166,7 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			new Notice(t('notice.fillAuthFirst'));
 			return;
 		}
-		const files = this.collectBoundFilesUnder(folder);
+		const files = collectBoundFilesUnder(this.app, this.settings.frontmatterKey, folder);
 		if (files.length === 0) {
 			new Notice(t('notice.folderNoBoundNotes', { folder: folder.name }));
 			return;
@@ -242,47 +220,9 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 
 	// =========== Template ===========
 
-    /** Writes confluence-note.md into the configured template folder. force=true overwrites existing content. */
-    async installTemplateFile(force: boolean): Promise<boolean> {
-        try {
-            const folder = normalizePath(this.settings.templateFolderPath || 'templates');
-            await this.ensureFolder(folder);
-
-            const fullPath = `${folder}/${TEMPLATE_FILENAME}`;
-            const existing = this.app.vault.getAbstractFileByPath(fullPath);
-            const content = buildTemplateContent();
-
-            if (existing instanceof TFile) {
-                if (!force) return true;
-                await this.app.vault.modify(existing, content);
-            } else {
-                await this.app.vault.create(fullPath, content);
-            }
-
-            this.logger.info(`Template written: ${fullPath}`);
-            return true;
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-
-            // Another operation may have created the template after the initial existence check.
-            if (/already exists/i.test(message)) return true;
-
-            this.logger.error('Failed to write template', message);
-            return false;
-        }
-    }
-
-	private async ensureFolder(path: string): Promise<void> {
-		if (!path) return;
-		const existing = this.app.vault.getAbstractFileByPath(path);
-		if (existing instanceof TFolder) return;
-		try {
-			await this.app.vault.createFolder(path);
-		} catch (e) {
-			const msg = e instanceof Error ? e.message : String(e);
-			if (/already exists/i.test(msg)) return;
-			throw e;
-		}
+	/** Writes confluence-note.md into the configured template folder. force=true overwrites existing content. */
+	async installTemplateFile(force: boolean): Promise<boolean> {
+		return installTemplateFileImpl(this.app, this.logger, this.settings.templateFolderPath, force);
 	}
 
 	// =========== UI ===========
@@ -327,7 +267,7 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			name: t('command.createBoundNote'),
 			callback: () => {
 				const modal = new CreateBoundNoteModal(this.app, this.settings.scanFolders[0] ?? '', async (path, url) => {
-					await this.ensureFolder(parentOf(path));
+					await ensureFolder(this.app, parentOf(path));
 					const file = await this.app.vault.create(path, buildTemplateContent());
 					await insertTemplateFrontmatter(this.app, file, url);
 					await this.app.workspace.openLinkText(file.path, '', false);
@@ -341,7 +281,7 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			name: t('command.insertConfluenceIgnoreLine'),
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				if (!view.file) { new Notice(t('notice.noteNotOpen')); return; }
-				this.insertConfluenceIgnoreLine(editor);
+				insertConfluenceIgnoreLine(editor);
 			},
 		});
 		this.addCommand({
@@ -349,7 +289,7 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			name: t('command.insertConfluenceIgnoreBlock'),
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				if (!view.file) { new Notice(t('notice.noteNotOpen')); return; }
-				this.insertConfluenceIgnoreBlock(editor);
+				insertConfluenceIgnoreBlock(editor);
 			},
 		});
 		this.addCommand({
@@ -357,7 +297,7 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			name: t('command.insertConfluenceToc'),
 			editorCallback: (editor: Editor, view: MarkdownView) => {
 				if (!view.file) { new Notice(t('notice.noteNotOpen')); return; }
-				this.insertConfluenceToc(editor);
+				insertConfluenceToc(editor);
 			},
 		});
 		this.addCommand({
@@ -394,141 +334,6 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 		});
 	}
 
-	private insertConfluenceIgnoreLine(editor: Editor): void {
-		const selection = editor.getSelection();
-		const startCursor = selection ? editor.getCursor('from') : editor.getCursor();
-		const endCursor = selection ? editor.getCursor('to') : startCursor;
-		const endLine = selection && endCursor.ch === 0 && endCursor.line > startCursor.line
-			? endCursor.line - 1
-			: endCursor.line;
-		let insertedCount = 0;
-
-		for (let lineNumber = endLine; lineNumber >= startCursor.line; lineNumber -= 1) {
-			const lineText = editor.getLine(lineNumber);
-			if (hasConfluenceIgnoreLineMarker(lineText)) continue;
-
-			const indentationLength = lineText.match(/^[\t ]*/)?.[0].length ?? 0;
-			const markerSuffix = lineText.slice(indentationLength) ? ' ' : '';
-			editor.replaceRange(
-				CONFLUENCE_IGNORE_LINE_MARKER + markerSuffix,
-				{ line: lineNumber, ch: indentationLength },
-			);
-			insertedCount += 1;
-
-			if (!selection && lineNumber === startCursor.line && startCursor.ch >= indentationLength) {
-				editor.setCursor({
-					line: startCursor.line,
-					ch: startCursor.ch + CONFLUENCE_IGNORE_LINE_MARKER.length + markerSuffix.length,
-				});
-			}
-		}
-
-		new Notice(t(insertedCount > 0 ? 'notice.ignoreLineInserted' : 'notice.ignoreLineAlreadyExists'));
-	}
-
-	private insertConfluenceIgnoreBlock(editor: Editor): void {
-		const selection = editor.getSelection();
-		const cursor = editor.getCursor();
-		const prefix = cursor.ch === 0 ? '' : '\n';
-		const ignoreBlock = createConfluenceIgnoreBlock(selection);
-
-		editor.replaceSelection(prefix + ignoreBlock + '\n');
-
-		if (!selection) {
-			editor.setCursor({
-				line: cursor.line + (prefix ? 2 : 1),
-				ch: 0,
-			});
-		}
-
-		new Notice(t('notice.ignoreBlockInserted'));
-	}
-
-	private insertConfluenceToc(editor: Editor): void {
-		const cursor = editor.getCursor();
-		const prefix = cursor.ch === 0 ? '' : '\n';
-		editor.replaceSelection(`${prefix}${CONFLUENCE_TOC_MARKER}\n`);
-		new Notice(t('notice.tocInserted'));
-	}
-
-	private registerMenuIntegrations(): void {
-		// Editor context menu: Confluence publishing and macro helpers are grouped together.
-		this.registerEvent(this.app.workspace.on('editor-menu', (menu: Menu, editor: Editor, view: MarkdownView) => {
-			const file = view.file;
-			if (!file || file.extension !== 'md') return;
-			this.addConfluenceEditorSubmenu(menu, editor, file);
-		}));
-
-		// File explorer context menu: files follow the same rule; folders can publish bound notes recursively.
-		this.registerEvent(this.app.workspace.on('file-menu', (menu: Menu, fileOrFolder) => {
-			if (fileOrFolder instanceof TFolder) {
-				if (!this.folderHasBoundFile(fileOrFolder)) return;
-				menu.addItem((item) => item
-					.setTitle(t('menu.publishFolder'))
-					.setIcon('cloud-upload')
-					.onClick(() => { void this.publishFolder(fileOrFolder); }));
-				return;
-			}
-			if (!(fileOrFolder instanceof TFile) || fileOrFolder.extension !== 'md') return;
-			const file = fileOrFolder;
-			if (this.fileIsBound(file)) {
-				menu.addItem((item) => item
-					.setTitle(t('menu.publishToConfluence'))
-					.setIcon('cloud-upload')
-					.onClick(() => { void this.publishFile(file); }));
-			} else {
-				menu.addItem((item) => item
-					.setTitle(t('menu.insertFrontmatter'))
-					.setIcon('cloud')
-					.onClick(async () => {
-						const ok = await insertTemplateFrontmatter(this.app, file);
-						new Notice(ok ? t('notice.frontmatterInsertedFileMenu') : t('notice.frontmatterAlreadyExists'));
-					}));
-			}
-		}));
-	}
-
-	private addConfluenceEditorSubmenu(menu: Menu, editor: Editor, file: TFile): void {
-		menu.addItem((item) => {
-			const submenuItem = item as unknown as SubmenuCapableMenuItem;
-			submenuItem
-				.setTitle(t('menu.confluenceGroup'))
-				.setIcon('cloud');
-
-			const submenu = typeof submenuItem.setSubmenu === 'function'
-				? submenuItem.setSubmenu()
-				: null;
-
-			if (submenu) {
-				this.addConfluenceEditorMenuItems(submenu, editor, file);
-			}
-		});
-	}
-
-	private addConfluenceEditorMenuItems(menu: Menu, editor: Editor, file: TFile): void {
-		menu.addItem((item) => item
-			.setTitle(t('menu.publishToConfluence'))
-			.setIcon('cloud-upload')
-			.onClick(() => { void this.publishFile(file); }));
-
-        menu.addSeparator();
-
-		menu.addItem((item) => item
-			.setTitle(t('menu.addIgnoreLineMacro'))
-			.setIcon('eye-off')
-			.onClick(() => { this.insertConfluenceIgnoreLine(editor); }));
-
-		menu.addItem((item) => item
-			.setTitle(t('menu.addIgnoreBlockMacro'))
-			.setIcon('eye-off')
-			.onClick(() => { this.insertConfluenceIgnoreBlock(editor); }));
-
-		menu.addItem((item) => item
-			.setTitle(t('menu.addTocMacro'))
-			.setIcon('list')
-			.onClick(() => { this.insertConfluenceToc(editor); }));
-	}
-
 	/**
 	 * Runs the current note through the Markdown -> Storage XHTML conversion chain without calling Confluence.
 	 * The result is written beside the note as *.preview.xml for XHTML debugging.
@@ -558,41 +363,6 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 			new Notice(t('notice.exportPreviewFailed', { error: e instanceof Error ? e.message : String(e) }));
 		}
 	}
-
-	/** Recursively collects all bound Markdown files under a folder. */
-	private collectBoundFilesUnder(folder: TFolder): TFile[] {
-		const out: TFile[] = [];
-		const walk = (f: TFolder) => {
-			for (const child of f.children) {
-				if (child instanceof TFolder) walk(child);
-				else if (child instanceof TFile && child.extension === 'md' && this.fileIsBound(child)) {
-					out.push(child);
-				}
-			}
-		};
-		walk(folder);
-		return out;
-	}
-
-	/** Returns whether a folder contains at least one bound note. Used to decide whether the file menu item should be shown. */
-	private folderHasBoundFile(folder: TFolder): boolean {
-		const stack: TFolder[] = [folder];
-		while (stack.length > 0) {
-			const f = stack.pop()!;
-			for (const child of f.children) {
-				if (child instanceof TFolder) stack.push(child);
-				else if (child instanceof TFile && child.extension === 'md' && this.fileIsBound(child)) {
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	private fileIsBound(file: TFile): boolean {
-		const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-		return fm ? hasPublishingBinding(fm, this.settings.frontmatterKey) : false;
-	}
 }
 
 function isStoredPluginData(value: unknown): value is { settings?: unknown } {
@@ -606,26 +376,4 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
 function parentOf(path: string): string {
 	const idx = path.lastIndexOf('/');
 	return idx > 0 ? path.slice(0, idx) : '';
-}
-
-interface SubmenuCapableMenuItem {
-	setTitle(title: string): SubmenuCapableMenuItem;
-	setIcon(icon: string): SubmenuCapableMenuItem;
-	setSubmenu?: () => Menu;
-}
-
-const CONFLUENCE_IGNORE_LINE_MARKER = '<!-- confluence:ignore-line -->';
-const CONFLUENCE_TOC_MARKER = '<!-- confluence:toc -->';
-
-function hasConfluenceIgnoreLineMarker(lineText: string): boolean {
-	return /^\s*<!--\s*confluence:ignore-line\s*-->/i.test(lineText);
-}
-
-function createConfluenceIgnoreBlock(content: string): string {
-	const trimmedContent = content.trim();
-	if (!trimmedContent) {
-		return '<!-- confluence:ignore-start -->\n\n\n<!-- confluence:ignore-end -->';
-	}
-
-	return `<!-- confluence:ignore-start -->\n\n${trimmedContent}\n\n<!-- confluence:ignore-end -->`;
 }

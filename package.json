@@ -48,11 +48,5 @@
 		"js-base64": "^3.8.0",
 		"markdown-it": "14.3.0",
 		"obsidian": "latest"
-	},
-	"overrides": {
-		"brace-expansion": "2.1.4",
-		"fast-uri": "3.1.5",
-		"postcss": "8.5.25",
-		"js-yaml": "4.3.1"
 	}
 }

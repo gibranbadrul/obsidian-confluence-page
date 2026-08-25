@@ -47,9 +47,82 @@ export function renderAcCode(language: string, code: string): string {
 	return `<ac:structured-macro ac:name="code">${langPart}<ac:plain-text-body><![CDATA[${cdataSafe(code)}]]></ac:plain-text-body></ac:structured-macro>`;
 }
 
-export function renderAcImage(filename: string, alt: string): string {
-	const altPart = alt ? ` ac:alt="${escapeAttr(alt)}"` : '';
-	return `<ac:image${altPart}><ri:attachment ri:filename="${escapeAttr(filename)}" /></ac:image>`;
+export type ImageAlign = 'left' | 'center' | 'right';
+export type ImageBorderSize = 'subtle' | 'medium' | 'bold';
+
+export interface ImageAttributes {
+	alt: string;
+	width?: string;
+	height?: string;
+	align?: ImageAlign;
+	border?: boolean;
+	/** Confluence Cloud only (ADF `border` mark, best-effort). Server/Data Center falls back to a plain border. */
+	borderSize?: ImageBorderSize;
+}
+
+const IMAGE_ALIGN_VALUES: ReadonlySet<string> = new Set(['left', 'center', 'right']);
+const IMAGE_BORDER_TOKEN = 'border';
+const IMAGE_BORDER_SIZE_TOKENS: Record<string, ImageBorderSize> = {
+	'border-subtle': 'subtle',
+	'border-medium': 'medium',
+	'border-bold': 'bold',
+};
+const IMAGE_BORDER_SIZE_VALUES: Record<ImageBorderSize, string> = { subtle: '1', medium: '2', bold: '3' };
+const IMAGE_BORDER_DEFAULT_COLOR = '#091e4224';
+const IMAGE_WIDTH_RE = /^(\d+)$/;
+const IMAGE_WIDTH_HEIGHT_RE = /^(\d+)\s*[xX]\s*(\d+)$/;
+
+/**
+ * Splits the Obsidian image alias/alt segment (pipe-separated) into display alt text plus optional
+ * size/align/border modifiers, in any order and position. `300` / `300x200` mirror Obsidian's own embed resize
+ * syntax; `left` / `center` / `right`, `border`, and `border-subtle` / `border-medium` / `border-bold` are
+ * Confluence-specific extensions. Each `|`-separated token is classified independently: a recognized modifier
+ * keyword is applied as that modifier, and every other token is treated as (part of) the alt text, e.g.
+ * `![[image.png|A caption|300x200|border-bold|center]]` keeps "A caption" as alt text alongside the modifiers.
+ * A token that happens to exactly match a modifier keyword (e.g. alt text "center") is read as that modifier,
+ * not literal alt text — this is an inherent trade-off of a keyword-based syntax sharing the same segment.
+ */
+export function parseImageAttributes(raw: string): ImageAttributes {
+	const trimmed = raw.trim();
+	if (!trimmed) return { alt: '' };
+
+	const tokens = trimmed.split('|').map((token) => token.trim()).filter(Boolean);
+	const attrs: ImageAttributes = { alt: '' };
+	const altParts: string[] = [];
+
+	for (const token of tokens) {
+		const widthOnly = token.match(IMAGE_WIDTH_RE);
+		if (widthOnly) { attrs.width = widthOnly[1]; continue; }
+
+		const widthAndHeight = token.match(IMAGE_WIDTH_HEIGHT_RE);
+		if (widthAndHeight) { attrs.width = widthAndHeight[1]; attrs.height = widthAndHeight[2]; continue; }
+
+		const lower = token.toLowerCase();
+		if (IMAGE_ALIGN_VALUES.has(lower)) { attrs.align = lower as ImageAlign; continue; }
+		if (lower === IMAGE_BORDER_TOKEN) { attrs.border = true; continue; }
+		const borderSize = IMAGE_BORDER_SIZE_TOKENS[lower];
+		if (borderSize) { attrs.border = true; attrs.borderSize = borderSize; continue; }
+
+		altParts.push(token);
+	}
+
+	attrs.alt = altParts.join('|');
+	return attrs;
+}
+
+export function renderAcImage(filename: string, attrs: ImageAttributes): string {
+	const altPart = attrs.alt ? ` ac:alt="${escapeAttr(attrs.alt)}"` : '';
+	const widthPart = attrs.width ? ` ac:width="${escapeAttr(attrs.width)}"` : '';
+	const heightPart = attrs.height ? ` ac:height="${escapeAttr(attrs.height)}"` : '';
+	const alignPart = attrs.align ? ` ac:align="${attrs.align}"` : '';
+	const borderPart = attrs.border ? ` ac:border="true"` : '';
+	// The ac:border attribute alone renders a plain border everywhere. The ac:adf-mark child additionally
+	// requests the sized/colored Confluence Cloud border style; unsupported targets (Server/Data Center, or a
+	// Cloud instance that doesn't honor it on write) are expected to just ignore the unknown element.
+	const borderMark = attrs.borderSize
+		? `<ac:adf-mark key="border" size="${IMAGE_BORDER_SIZE_VALUES[attrs.borderSize]}" color="${IMAGE_BORDER_DEFAULT_COLOR}" />`
+		: '';
+	return `<ac:image${altPart}${widthPart}${heightPart}${alignPart}${borderPart}><ri:attachment ri:filename="${escapeAttr(filename)}" />${borderMark}</ac:image>`;
 }
 
 export function renderAcToc(): string {

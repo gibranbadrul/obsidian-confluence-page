@@ -15,6 +15,7 @@ import { TOC_LINE_RE } from './markers';
 import {
 	detectCalloutType,
 	escapeAttr,
+	parseImageAttributes,
 	postProcessHtml,
 	renderAcCode,
 	renderAcImage,
@@ -184,12 +185,12 @@ export class MarkdownConverter {
 			if (lang === 'mermaid' && ctx.renderMermaidToPng) {
 				const hash = fenceHashes.get(`mermaid|${content}`);
 				const filename = hash ? ctx.mermaidFilenameByHash.get(hash) : undefined;
-				if (filename) return renderAcImage(filename, '');
+				if (filename) return renderAcImage(filename, { alt: '' });
 			}
 			if (lang === 'plantuml' && ctx.renderPlantUmlToPng) {
 				const hash = fenceHashes.get(`plantuml|${content}`);
 				const filename = hash ? ctx.plantUmlFilenameByHash.get(hash) : undefined;
-				if (filename) return renderAcImage(filename, '');
+				if (filename) return renderAcImage(filename, { alt: '' });
 			}
 			return renderAcCode(lang, content);
 		};
@@ -199,17 +200,21 @@ export class MarkdownConverter {
 		};
 
 		// image: replace uploaded local attachments with ac:image; keep external images as regular img tags.
+		// The alt segment doubles as size/align/border hints; see parseImageAttributes for the syntax.
 		md.renderer.rules.image = (tokens, idx) => {
 			const token = tokens[idx]!;
 			const src = token.attrGet('src') ?? '';
-			const alt = token.content || '';
+			const attrs = parseImageAttributes(token.content || '');
 			if (/^[a-z][a-z0-9+\-.]*:\/\//i.test(src) || src.startsWith('data:')) {
-				return `<img src="${escapeAttr(src)}" alt="${escapeAttr(alt)}" />`;
+				// align/border are Confluence ac:image-only attributes; remote <img> tags only get resized.
+				const widthPart = attrs.width ? ` width="${escapeAttr(attrs.width)}"` : '';
+				const heightPart = attrs.height ? ` height="${escapeAttr(attrs.height)}"` : '';
+				return `<img src="${escapeAttr(src)}" alt="${escapeAttr(attrs.alt)}"${widthPart}${heightPart} />`;
 			}
 			const decoded = tryDecode(src);
 			const filename = decoded.split('/').pop() ?? decoded;
 			if (ctx.attachedFilenames.has(filename)) {
-				return renderAcImage(filename, alt);
+				return renderAcImage(filename, attrs);
 			}
 			return `<!-- Missing uploaded attachment: ${escapeAttr(filename)} -->`;
 		};

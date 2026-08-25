@@ -181,6 +181,108 @@ describe('MarkdownConverter', () => {
 		expect(html).toContain('<ri:attachment ri:filename="image.png" />');
 	});
 
+	it('resizes local image attachments using Obsidian width and widthxheight syntax', async () => {
+		const image = new TFile('assets/image.png');
+		const converter = new MarkdownConverter(createApp([image]));
+
+		const widthOnly = '![[assets/image.png|300]]';
+		const widthOnlyRefs = await converter.extractReferences(widthOnly, 'note.md');
+		const widthOnlyHtml = await converter.convert(widthOnly, 'note.md', createContext({
+			attachedFilenames: new Set(widthOnlyRefs.attachments.map((ref) => ref.filename)),
+		}));
+		expect(widthOnlyHtml).toContain('<ac:image ac:width="300">');
+
+		const widthAndHeight = '![[assets/image.png|300x200]]';
+		const widthAndHeightRefs = await converter.extractReferences(widthAndHeight, 'note.md');
+		const widthAndHeightHtml = await converter.convert(widthAndHeight, 'note.md', createContext({
+			attachedFilenames: new Set(widthAndHeightRefs.attachments.map((ref) => ref.filename)),
+		}));
+		expect(widthAndHeightHtml).toContain('<ac:image ac:width="300" ac:height="200">');
+	});
+
+	it('resizes standard Markdown images using the same width syntax in the alt slot', async () => {
+		const image = new TFile('image.png');
+		const converter = new MarkdownConverter(createApp([image]));
+		const markdown = '![300](image.png)';
+		const refs = await converter.extractReferences(markdown, 'note.md');
+		const html = await converter.convert(markdown, 'note.md', createContext({
+			attachedFilenames: new Set(refs.attachments.map((ref) => ref.filename)),
+		}));
+
+		expect(html).toContain('<ac:image ac:width="300">');
+	});
+
+	it('adds border and alignment attributes to local image attachments', async () => {
+		const image = new TFile('assets/image.png');
+		const converter = new MarkdownConverter(createApp([image]));
+
+		const bordered = '![[assets/image.png|border]]';
+		const borderedRefs = await converter.extractReferences(bordered, 'note.md');
+		const borderedHtml = await converter.convert(bordered, 'note.md', createContext({
+			attachedFilenames: new Set(borderedRefs.attachments.map((ref) => ref.filename)),
+		}));
+		expect(borderedHtml).toContain('<ac:image ac:border="true">');
+
+		const aligned = '![[assets/image.png|center]]';
+		const alignedRefs = await converter.extractReferences(aligned, 'note.md');
+		const alignedHtml = await converter.convert(aligned, 'note.md', createContext({
+			attachedFilenames: new Set(alignedRefs.attachments.map((ref) => ref.filename)),
+		}));
+		expect(alignedHtml).toContain('<ac:image ac:align="center">');
+	});
+
+	it('emits a Confluence Cloud adf-mark for the border-subtle/medium/bold modifiers', async () => {
+		const image = new TFile('assets/image.png');
+		const converter = new MarkdownConverter(createApp([image]));
+
+		const cases: Array<[string, string]> = [
+			['![[assets/image.png|border-subtle]]', '1'],
+			['![[assets/image.png|border-medium]]', '2'],
+			['![[assets/image.png|border-bold]]', '3'],
+		];
+
+		for (const [markdown, size] of cases) {
+			const refs = await converter.extractReferences(markdown, 'note.md');
+			const html = await converter.convert(markdown, 'note.md', createContext({
+				attachedFilenames: new Set(refs.attachments.map((ref) => ref.filename)),
+			}));
+			expect(html).toContain('<ac:image ac:border="true">');
+			expect(html).toContain(`<ac:adf-mark key="border" size="${size}" color="#091e4224" />`);
+		}
+	});
+
+	it('combines size, alignment, and border modifiers in any order', async () => {
+		const image = new TFile('assets/image.png');
+		const converter = new MarkdownConverter(createApp([image]));
+		const markdown = '![[assets/image.png|300x200|border|right]]';
+		const refs = await converter.extractReferences(markdown, 'note.md');
+		const html = await converter.convert(markdown, 'note.md', createContext({
+			attachedFilenames: new Set(refs.attachments.map((ref) => ref.filename)),
+		}));
+
+		expect(html).toContain('<ac:image ac:width="300" ac:height="200" ac:align="right" ac:border="true">');
+	});
+
+	it('keeps unrecognized segments as alt text alongside recognized modifiers, in any position', async () => {
+		const image = new TFile('assets/image.png');
+		const converter = new MarkdownConverter(createApp([image]));
+		const markdown = '![[assets/image.png|A caption|300x200|border-bold|center]]';
+		const refs = await converter.extractReferences(markdown, 'note.md');
+		const html = await converter.convert(markdown, 'note.md', createContext({
+			attachedFilenames: new Set(refs.attachments.map((ref) => ref.filename)),
+		}));
+
+		expect(html).toContain('<ac:image ac:alt="A caption" ac:width="300" ac:height="200" ac:align="center" ac:border="true">');
+		expect(html).toContain('<ac:adf-mark key="border" size="3" color="#091e4224" />');
+	});
+
+	it('resizes remote images by adding width/height attributes to the img tag', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('![300x200](https://placehold.co/600x200/png)', 'note.md', createContext());
+
+		expect(html).toContain('<img src="https://placehold.co/600x200/png" alt="" width="300" height="200" />');
+	});
+
 	it('passes remote images through as remote image URLs', async () => {
 		const converter = new MarkdownConverter(createApp());
 		const html = await converter.convert('![Remote](https://placehold.co/600x200/png)', 'note.md', createContext());

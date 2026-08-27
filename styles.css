@@ -126,3 +126,292 @@ Confluence Page Publisher plugin styles
     font-family: var(--font-interface);
     font-size: var(--font-text);
 }
+
+/* Image attributes toolbar (Live Preview editor). A normal block widget appended right after each
+   standalone image-embed line. The "Custom size" panel it opens is a separate, portalled AnchoredPanel
+   (see .confluence-image-anchored-panel below), not a child of this wrapper. */
+.confluence-image-toolbar-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    /* padding-top, not margin-top: CodeMirror wraps this block widget in a plain container with no
+       border/padding of its own, so a margin-top here collapses through it and gets measured away —
+       padding is never eligible to collapse, so it reliably reserves the gap above the toolbar. */
+    padding-top: 8px;
+    margin: 0 0 6px 0;
+    width: fit-content;
+}
+
+/* Fixed dark chrome (not the vault theme's own colors) — this toolbar is meant to read as floating
+   overlay UI, the same on every theme, rather than blending into the note. */
+.confluence-image-toolbar {
+    --cpp-toolbar-fg: #b3b3b3;
+    --cpp-toolbar-fg-active: #dadada;
+    --cpp-toolbar-hover: #2b2b2b;
+    --cpp-toolbar-active-bg: #333333;
+    display: flex;
+    gap: 2px;
+    padding: 4px 6px;
+    background: #1c1c1c;
+    border: 1px solid #2f2f2f;
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    user-select: none;
+    transform-origin: top left;
+    animation: confluence-image-toolbar-flyout 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes confluence-image-toolbar-flyout {
+    from {
+        opacity: 0;
+        transform: scale(0.92) translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .confluence-image-toolbar {
+        animation: none;
+    }
+}
+
+/* Toolbar text button (Color/Size dropdown triggers). Same interaction language as the icon buttons
+   below — see that rule for the hover/is-active rationale. */
+/* `box-shadow: none` here (and on the icon button and its :hover below) beats Obsidian's own default
+   button chrome — a bare `<button>` normally gets a raised background + shadow from core app.css
+   (`button:not(.clickable-icon)` / `button:hover`) that this toolbar's flat design doesn't want. */
+button.confluence-image-toolbar-button {
+    padding: 2px 8px;
+    font-size: var(--font-ui-smaller);
+    color: var(--cpp-toolbar-fg);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    box-shadow: none;
+    cursor: pointer;
+}
+
+.confluence-image-toolbar-button:hover {
+    background: var(--cpp-toolbar-hover);
+    color: var(--cpp-toolbar-fg-active);
+    box-shadow: none;
+}
+
+.confluence-image-toolbar-button:active {
+    background: var(--cpp-toolbar-active-bg);
+}
+
+.confluence-image-toolbar-button.is-active {
+    background: var(--cpp-toolbar-hover);
+    color: var(--cpp-toolbar-fg-active);
+}
+
+/* Icon-only toolbar buttons: a single icon, 28px square, flat until hovered. `:hover` and `.is-active`
+   deliberately share the same background and brighter icon color — is-active just persists it regardless
+   of hover — with `:active` (mouse held down) one step darker again. */
+button.confluence-image-toolbar-icon-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    box-sizing: border-box;
+    color: var(--cpp-toolbar-fg);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    box-shadow: none;
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.confluence-image-toolbar-icon-button:hover {
+    background: var(--cpp-toolbar-hover);
+    color: var(--cpp-toolbar-fg-active);
+    box-shadow: none;
+}
+
+.confluence-image-toolbar-icon-button:active {
+    background: var(--cpp-toolbar-active-bg);
+}
+
+.confluence-image-toolbar-icon-button.is-active {
+    background: var(--cpp-toolbar-hover);
+    color: var(--cpp-toolbar-fg-active);
+}
+
+.confluence-image-toolbar-icon-button svg {
+    width: 16px;
+    height: 16px;
+}
+
+.confluence-image-toolbar-cluster {
+    display: flex;
+    gap: 2px;
+}
+
+/* Color/Size dropdown triggers — a text button (see .confluence-image-toolbar-button above) with a
+   trailing chevron, opening a native obsidian.Menu on click (see showBorderColorMenu/showBorderSizeMenu). */
+.confluence-image-toolbar-menu-trigger {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.confluence-image-toolbar-menu-trigger-chevron svg {
+    width: 12px;
+    height: 12px;
+    display: block;
+}
+
+.confluence-image-toolbar-sep {
+    align-self: stretch;
+    width: 1px;
+    margin: 2px 4px;
+    background: #2f2f2f;
+}
+
+/* Portalled panel positioning (see src/editor/anchoredPanel.ts) — `position: fixed` in viewport
+   coordinates, top/left set inline by AnchoredPanel. `.confluence-image-anchored-panel-measuring`
+   renders it hidden at 0,0 first so its true content size can be measured before it's placed and shown. */
+.confluence-image-anchored-panel {
+    position: fixed;
+    z-index: 1001;
+}
+
+.confluence-image-anchored-panel.confluence-image-anchored-panel-measuring {
+    visibility: hidden;
+    top: 0;
+    left: 0;
+}
+
+.confluence-image-size-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: max-content;
+    max-width: 360px;
+    padding: 8px 10px;
+    background: var(--background-secondary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    user-select: none;
+}
+
+/* Title + Reset (undo) / Cancel (x) / Apply (check) header — the only way this panel commits,
+   deliberately not on blur (see buildPanelHeader in imageAttributesToolbar.ts). */
+.confluence-image-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.confluence-image-panel-header-title {
+    font-weight: 600;
+    font-size: var(--font-ui-small);
+    color: var(--text-normal);
+}
+
+.confluence-image-panel-header-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.confluence-image-panel-header .confluence-image-toolbar-icon-button {
+    width: 26px;
+    height: 26px;
+    border: none;
+}
+
+/* Apply reads as the affirmative action even before hovering it; Cancel turns error-red on hover as the
+   one destructive-feeling action in the header. */
+.confluence-image-panel-header-apply {
+    color: var(--interactive-accent);
+}
+
+.confluence-image-panel-header-cancel:hover {
+    color: var(--text-error);
+}
+
+.confluence-image-size-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.confluence-image-size-choice {
+    padding: 3px 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background: var(--background-primary);
+    color: var(--text-normal);
+    cursor: pointer;
+    font-size: var(--font-ui-smaller);
+}
+
+.confluence-image-size-choice:hover {
+    background: var(--background-modifier-hover);
+}
+
+.confluence-image-size-choice.is-active {
+    border-color: var(--interactive-accent);
+    color: var(--interactive-accent);
+}
+
+.confluence-image-size-fields {
+    display: flex;
+    gap: 10px;
+}
+
+.confluence-image-size-field {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+}
+
+.confluence-image-size-field-icon svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+}
+
+.confluence-image-size-input {
+    width: 80px;
+    padding: 2px 6px;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-normal);
+    background: var(--background-modifier-form-field);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+}
+
+/* "Alt text & caption" panel — two stacked labeled fields. */
+.confluence-image-caption-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.confluence-image-caption-label {
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
+}
+
+.confluence-image-caption-input {
+    width: 260px;
+    padding: 4px 8px;
+    font-size: var(--font-ui-small);
+    color: var(--text-normal);
+    background: var(--background-modifier-form-field);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+}
+

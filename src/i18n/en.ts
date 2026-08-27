@@ -1,4 +1,4 @@
- 
+
 // English UI strings. Keys are grouped by surface.
 export const en = {
 	// ===== Plugin-level =====
@@ -185,6 +185,10 @@ export const en = {
 			name: 'Show notices',
 			desc: 'Show a notice when a publish operation finishes or fails.',
 		},
+		showImageAttributesToolbar: {
+			name: 'Show image attributes toolbar',
+			desc: 'When the cursor is on a line containing only an image embed in Live Preview, shows a small toolbar below it to set size, alignment, and border without typing the `|` syntax by hand.',
+		},
 		frontmatterKey: {
 			name: 'Frontmatter key name',
 			desc: 'Advanced: frontmatter field used to store the target Confluence page URL. Defaults to confluence_url.',
@@ -209,6 +213,40 @@ export const en = {
 			cancel: 'Cancel',
 			defaultOk: 'OK',
 		},
+	},
+
+	// ===== Image attributes toolbar (Live Preview editor) =====
+	imageToolbar: {
+		border: 'Image Border',
+		size: 'Image Size',
+		borderSubtle: 'Subtle',
+		borderMedium: 'Medium',
+		borderBold: 'Bold',
+		borderColorLabel: 'Color',
+		borderSizeLabel: 'Size',
+		borderColorLight: 'Light',
+		borderColorMedium: 'Medium',
+		borderColorDark: 'Dark',
+		alignLeft: 'Left',
+		alignCenter: 'Center',
+		alignRight: 'Right',
+		wrapLeft: 'Wrap left',
+		wrapRight: 'Wrap right',
+		sizeSmall: 'Small',
+		sizeMedium: 'Medium',
+		sizeLarge: 'Large',
+		sizeOriginal: 'Original',
+		customSize: 'Custom size',
+		width: 'Width',
+		height: 'Height',
+		altCaption: 'Alt text & caption',
+		altTextLabel: 'Alt text',
+		altTextPlaceholder: 'Describe this image for screen readers…',
+		captionLabel: 'Caption',
+		captionPlaceholder: 'Add a caption…',
+		reset: 'Reset',
+		cancel: 'Cancel',
+		apply: 'Apply',
 	},
 
 	// ===== Note template body =====

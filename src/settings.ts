@@ -31,6 +31,8 @@ export interface ConfluencePagePublisherSettings {
 	// ========== Interface ==========
 	showStatusBar: boolean;
 	showNotice: boolean;
+	/** Shows a toolbar below a standalone image-embed line when the cursor is on it, to set size/align/border without typing the `|` syntax. */
+	showImageAttributesToolbar: boolean;
 
 	// ========== Publishing metadata ==========
 	/** Frontmatter field that stores the target Confluence page URL. */
@@ -64,6 +66,7 @@ export const DEFAULT_SETTINGS: ConfluencePagePublisherSettings = {
 
 	showStatusBar: true,
 	showNotice: true,
+	showImageAttributesToolbar: true,
 
 	frontmatterKey: FrontmatterFields.URL,
 

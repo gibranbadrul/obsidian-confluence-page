@@ -290,26 +290,33 @@ Confluence Page Publisher supports a few internal comment macros. These macros a
 
 ## Image attributes
 
-Add modifiers after a `|` to resize, align, or add a border to an image, and optionally keep alt text alongside them. This works on Obsidian embeds (`![[image.png|...]]`) and standard Markdown images (`![...](image.png)`); modifiers and alt text can be combined with more `|` separators, in any order:
+Add `cpp-`-prefixed modifiers after a `|` to resize, align, wrap, border, or caption an image — works on  Obsidian embeds (`![[image.png|...]]`)
+and Markdown images (`![...](image.png)`), stack as many as you want in any order.  The `cpp-` prefix keeps them from clashing with other
+plugins that read the same `|` segment (some use bare numbers for resizing),  and from accidentally matching real alt text.
+
+### Editor toolbar
+
+Click an image alone on its own line (e.g. `![[image.png]]`) in the editor and a toolbar shows up below it — no need to type the syntax by hand.
+Align, wrap, and border toggle are buttons; **Color** / **Size** open a dropdown for border thickness/color; **Image Size** and
+**Alt text & Caption** open a small panel (Apply/Enter to commit, Cancel/Escape to discard). Move the cursor off the line and it disappears.
+Toggle it off in Settings → Interface → **Show image attributes toolbar**.
 
 ```text
-![[diagram.png|A caption describing the diagram|300x200|border-bold|center]]
+![[diagram.png|A caption describing the diagram|cpp-w-300|cpp-h-200|cpp-border-bold|cpp-center]]
 ```
 
-| Modifier          | Example                        | Result                                            |
-|-------------------|---------------------------------|-----------------------------------------------------|
-| Width             | `\|300`                          | `ac:width="300"`                                     |
-| Width and height  | `\|300x200`                      | `ac:width="300" ac:height="200"`                     |
-| Alignment         | `\|left`, `\|center`, `\|right`    | `ac:align="..."`                                     |
-| Border            | `\|border`                       | `ac:border="true"`                                   |
-| Border thickness  | `\|border-subtle`, `\|border-medium`, `\|border-bold` | `ac:border="true"` + Confluence Cloud border thickness/color (see caveat below) |
-| Combined          | `\|300x200\|border-bold\|right`   | all of the above together                            |
-
-Alignment and border only apply to attachments uploaded to Confluence (`ac:image` macro attributes); remote images (`![...](https://...)`) only support width/height resizing, since Confluence does not render `ac:image` for external URLs.
-
-Each `|`-separated part is read independently: a part matching a size, alignment, or border keyword becomes that modifier, and every other part is kept as alt text (joined back with `|` if there's more than one). This means alt text that happens to exactly match a modifier keyword (e.g. `|center`) is read as that modifier rather than literal text — an inherent trade-off of packing both into the same segment.
-
-**`border-subtle` / `border-medium` / `border-bold` are best-effort and Confluence Cloud only.** They emit an `ac:adf-mark` element (the storage-format escape hatch for Confluence's ADF-only editor features) alongside the plain `ac:border="true"` attribute. This isn't officially documented as writable through the content REST API, so it may silently have no visible effect beyond the plain border, and it never applies on Confluence Server / Data Center (no ADF editor there) — plain `\|border` is the only border modifier guaranteed to work everywhere.
+| Modifier          | Example                                                                            | Result                                                                    |
+|-------------------|------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| Width             | `\|cpp-w-300`                                                                      | `ac:width="300"`                                                          |
+| Height            | `\|cpp-h-200`                                                                      | `ac:height="200"`                                                         |
+| Width and height  | `\|cpp-w-300\|cpp-h-200`                                                           | `ac:width="300" ac:height="200"`                                          |
+| Alignment         | `\|cpp-left`, `\|cpp-center`, `\|cpp-right`                                        | `ac:align="..."`                                                          |
+| Wrap              | `\|cpp-left\|cpp-wrap`, `\|cpp-right\|cpp-wrap`                                    | `ac:align="..."` + `ac:layout="wrap-left"`/`"wrap-right"`                 |
+| Border            | `\|cpp-border`                                                                     | `ac:border="true"`                                                        |
+| Border thickness  | `\|cpp-border-subtle`, `\|cpp-border-medium`, `\|cpp-border-bold`                  | `ac:border="true"` + Confluence Cloud border thickness (see caveat below) |
+| Border color      | `\|cpp-border-color-light`, `\|cpp-border-color-medium`, `\|cpp-border-color-dark` | `ac:border="true"` + Confluence Cloud border color (see caveat below)     |
+| Caption           | `\|cpp-caption:A visible caption`                                                  | `<ac:caption>` child element (see caveat below)                           |
+| Combined          | `\|cpp-w-300\|cpp-h-200\|cpp-border-bold\|cpp-right`                               | all of the above together                                                 |
 
 ## Attachment publishing
 
@@ -355,7 +362,7 @@ Settings > Community plugins > Confluence Page Publisher > Settings
 | Publishing metadata | Frontmatter field mapping                              |
 | Publishing assets   | Attachment upload toggle and max file size             |
 | Content conversion  | Mermaid and PlantUML rendering options                 |
-| Interface           | Status bar and notices                                 |
+| Interface           | Status bar, notices, and the image attributes toolbar  |
 
 ## Authentication
 
@@ -452,7 +459,7 @@ Here is what it does:
 - Confluence edits are not pulled back into Obsidian
 - New page creation requires an existing parent page URL, or a folder URL on Confluence Cloud
 - Root page creation from `confluence_space_key` is planned
-- Task lists, footnotes, math, tags-to-labels, note transclusion, and semantic image captions are planned
+- Task lists, footnotes, math, tags-to-labels, and note transclusion are planned
 - Raw HTML is not executed
 - Mobile Obsidian is not supported
 

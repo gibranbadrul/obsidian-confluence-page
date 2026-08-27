@@ -233,6 +233,14 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 						key: 'showNotice',
 					},
 				},
+				{
+					name: t('settings.showImageAttributesToolbar.name'),
+					desc: t('settings.showImageAttributesToolbar.desc'),
+					control: {
+						type: 'toggle',
+						key: 'showImageAttributesToolbar',
+					},
+				},
 			]),
 		];
 	}
@@ -306,6 +314,9 @@ export class ConfluencePagePublisherSettingTab extends PluginSettingTab {
 				break;
 			case 'showNotice':
 				settings.showNotice = value === true;
+				break;
+			case 'showImageAttributesToolbar':
+				settings.showImageAttributesToolbar = value === true;
 				break;
 			default:
 				throw new Error(`Unsupported setting key: ${key}`);

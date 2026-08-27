@@ -18,6 +18,7 @@ import { PublishEngine } from './publish/publishEngine';
 import { buildTemplateContent, ensureFolder, installTemplateFile as installTemplateFileImpl } from './publish/template';
 import { collectBoundFilesUnder } from './publish/boundNotes';
 import { insertConfluenceIgnoreBlock, insertConfluenceIgnoreLine, insertConfluenceToc } from './editor/confluenceMacros';
+import { imageAttributesToolbarExtension } from './editor/imageAttributesToolbar';
 import { Logger } from './utils/logger';
 import { StatusBarManager } from './ui/statusBar';
 import { CreateBoundNoteModal } from './ui/createBoundNoteModal';
@@ -49,6 +50,7 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 		this.addSettingTab(new ConfluencePagePublisherSettingTab(this.app, this));
 		this.registerCommands();
 		registerPluginMenus(this);
+		this.registerEditorExtension(imageAttributesToolbarExtension(this.app, () => this.settings.showImageAttributesToolbar));
 
 		if (this.settings.showStatusBar) {
 			this.statusBar = new StatusBarManager(this);

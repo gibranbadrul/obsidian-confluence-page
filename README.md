@@ -268,19 +268,19 @@ Creating a root page directly from a space key is planned. New pages currently r
 
 ## Not converted yet
 
-| Element                 | Current behavior                                                                    |
-|-------------------------|-------------------------------------------------------------------------------------|
-| Highlight               | Kept as plain text                                                                  |
-| Task lists              | Kept as text markers                                                                |
-| Heading/block wikilinks | Resolve the target page when bound, but do not preserve the heading or block anchor |
-| Non-image file embeds   | Uploaded, but richer attachment rendering is planned                                |
-| Footnotes               | Kept as plain text                                                                  |
-| Math / LaTeX            | Kept as plain text                                                                  |
-| Tags                    | Kept as text; Confluence labels are planned                                         |
-| Note transclusion       | Not inlined yet                                                                     |
+| Element                 | Current behavior                                                                       |
+|-------------------------|----------------------------------------------------------------------------------------|
+| Highlight               | Kept as plain text                                                                     |
+| Task lists              | Kept as text markers                                                                   |
+| Heading/block wikilinks | Resolve the target page when bound, but do not preserve the heading or block anchor    |
+| Non-image file embeds   | Uploaded, but richer attachment rendering is planned                                   |
+| Footnotes               | Kept as plain text                                                                     |
+| Math / LaTeX            | Kept as plain text                                                                     |
+| Tags                    | Kept as text; Confluence labels are planned                                            |
+| Note transclusion       | Not inlined yet                                                                        |
 | Raw HTML                | Escaped / not executed, except `<details>` — see [`<details>` blocks](#details-blocks) |
-| Definition lists        | Kept as regular text                                                                |
-| Supplementary emoji     | Replaced with stable placeholders for Confluence compatibility                      |
+| Definition lists        | Kept as regular text                                                                   |
+| Supplementary emoji     | Replaced with stable placeholders for Confluence compatibility                         |
 
 ## Internal macros
 
@@ -326,13 +326,13 @@ Toggle it off in Settings → Interface → **Show image attributes toolbar**.
 
 Obsidian callouts (`> [!type] Title`) become Confluence structured macros. Most types map to the similarly-named panel:
 
-| Callout type(s)                     | Confluence panel |
-|--------------------------------------|-------------------|
-| `note`, `info`, `tip`, `hint`        | Info              |
-| `warning`, `caution`, `attention`    | Warning           |
-| `danger`, `error`, `failure`, `bug`  | Note              |
-| `success`, `check`, `done`           | Tip               |
-| anything else                        | Info (default)    |
+| Callout type(s)                      | Confluence panel   |
+|--------------------------------------|--------------------|
+| `note`, `info`, `tip`, `hint`        | Info               |
+| `warning`, `caution`, `attention`    | Warning            |
+| `danger`, `error`, `failure`, `bug`  | Note               |
+| `success`, `check`, `done`           | Tip                |
+| anything else                        | Info (default)     |
 
 ### Collapsible callouts
 

@@ -262,6 +262,8 @@ Creating a root page directly from a space key is planned. New pages currently r
 | PlantUML blocks                             | Rendered image attachment when enabled                                 |
 | Internal Macros                             | See [Internal macros](#internal-macros) for details                    |
 
+Most callout types map to the similarly-named Confluence panel (`[!warning]` → warning panel, `[!tip]` → tip panel, etc.). `[!expand]` is the one exception — it produces a collapsible expand section instead of a panel.
+
 ## Not converted yet
 
 | Element                 | Current behavior                                                                    |

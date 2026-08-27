@@ -126,6 +126,22 @@ describe('MarkdownConverter', () => {
 		expect(html).toContain('Be careful');
 	});
 
+	it('converts an [!expand] callout to a Confluence expand macro', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('> [!expand] Click to expand\n> Hidden details.', 'note.md', createContext());
+
+		expect(html).toContain('<ac:structured-macro ac:name="expand">');
+		expect(html).toContain('Click to expand');
+		expect(html).toContain('Hidden details');
+	});
+
+	it('falls back to the info macro for an unrecognized callout type', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('> [!quote] A nice quote\n> "To be or not to be."', 'note.md', createContext());
+
+		expect(html).toContain('<ac:structured-macro ac:name="info">');
+	});
+
 	it('converts fenced code blocks to Confluence code macros', async () => {
 		const converter = new MarkdownConverter(createApp());
 		const html = await converter.convert('```typescript\nconst value = 1;\n```', 'note.md', createContext());

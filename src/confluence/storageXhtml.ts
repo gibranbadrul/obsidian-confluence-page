@@ -37,7 +37,7 @@ function mapCalloutMacro(type: string): string {
 		case 'SUCCESS':
 		case 'CHECK':
 		case 'DONE': return 'tip';
-		case 'QUOTE': return 'expand';
+		case 'EXPAND': return 'expand';
 		default: return 'info';
 	}
 }

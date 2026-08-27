@@ -50,7 +50,7 @@ export default class ConfluencePagePublisherPlugin extends Plugin {
 		this.addSettingTab(new ConfluencePagePublisherSettingTab(this.app, this));
 		this.registerCommands();
 		registerPluginMenus(this);
-		this.registerEditorExtension(imageAttributesToolbarExtension(this.app, () => this.settings.showImageAttributesToolbar));
+		this.registerEditorExtension(imageAttributesToolbarExtension(() => this.settings.showImageAttributesToolbar));
 
 		if (this.settings.showStatusBar) {
 			this.statusBar = new StatusBarManager(this);

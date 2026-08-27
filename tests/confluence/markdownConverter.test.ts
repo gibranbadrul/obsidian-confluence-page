@@ -126,20 +126,99 @@ describe('MarkdownConverter', () => {
 		expect(html).toContain('Be careful');
 	});
 
-	it('converts an [!expand] callout to a Confluence expand macro', async () => {
+	it('converts a foldable callout to a Confluence expand macro regardless of its icon type', async () => {
 		const converter = new MarkdownConverter(createApp());
-		const html = await converter.convert('> [!expand] Click to expand\n> Hidden details.', 'note.md', createContext());
 
-		expect(html).toContain('<ac:structured-macro ac:name="expand">');
-		expect(html).toContain('Click to expand');
-		expect(html).toContain('Hidden details');
+		const collapsed = await converter.convert('> [!note]- Click to expand\n> Hidden details.', 'note.md', createContext());
+		expect(collapsed).toContain('<ac:structured-macro ac:name="expand">');
+		expect(collapsed).toContain('Click to expand');
+		expect(collapsed).toContain('Hidden details');
+
+		const expanded = await converter.convert('> [!warning]+ Click to expand\n> Hidden details.', 'note.md', createContext());
+		expect(expanded).toContain('<ac:structured-macro ac:name="expand">');
 	});
 
-	it('falls back to the info macro for an unrecognized callout type', async () => {
+	it('pulls a foldable callout\'s title line into ac:parameter, visible on the collapsed toggle, not duplicated in the body', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('> [!faq]- Are callouts foldable?\n> Yes! The contents are hidden when collapsed.', 'note.md', createContext());
+
+		expect(html).toContain('<ac:parameter ac:name="title">Are callouts foldable?</ac:parameter>');
+		// The title must not also appear as the first line of the body.
+		expect(html.match(/Are callouts foldable\?/g)).toHaveLength(1);
+		expect(html).toContain('Yes! The contents are hidden when collapsed.');
+	});
+
+	it('handles a foldable callout with no body — title only, no ac:parameter left dangling', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('> [!note]- Just a title, no body', 'note.md', createContext());
+
+		expect(html).toContain('<ac:parameter ac:name="title">Just a title, no body</ac:parameter>');
+	});
+
+	it('falls back to the info macro for an unrecognized, non-foldable callout type', async () => {
 		const converter = new MarkdownConverter(createApp());
 		const html = await converter.convert('> [!quote] A nice quote\n> "To be or not to be."', 'note.md', createContext());
 
 		expect(html).toContain('<ac:structured-macro ac:name="info">');
+	});
+
+	it('converts a <details><summary> block to a Confluence expand macro with the body rendered as Markdown', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const markdown = [
+			'<details>',
+			'<summary>Click to expand</summary>',
+			'',
+			'- item 1',
+			'- item 2',
+			'',
+			'</details>',
+		].join('\n');
+		const html = await converter.convert(markdown, 'note.md', createContext());
+
+		expect(html).toContain('<ac:structured-macro ac:name="expand">');
+		expect(html).toContain('<ac:parameter ac:name="title">Click to expand</ac:parameter>');
+		expect(html).toContain('<ac:rich-text-body>');
+		expect(html).toContain('<li>item 1</li>');
+		expect(html).toContain('<li>item 2</li>');
+	});
+
+	it('recognizes a <details> block even with no blank line before it', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const markdown = [
+			'> [!note]- A foldable callout right above',
+			'> with no blank line separating it from the details block below.',
+			'<details>',
+			'<summary>Test</summary>',
+			'',
+			'body',
+			'',
+			'</details>',
+		].join('\n');
+		const html = await converter.convert(markdown, 'note.md', createContext());
+
+		// Two separate expand macros — the details block must not get swallowed as literal
+		// continuation text of the callout's paragraph.
+		expect(html.match(/<ac:structured-macro ac:name="expand">/g)).toHaveLength(2);
+		expect(html).not.toContain('&lt;details&gt;');
+		expect(html).toContain('<ac:parameter ac:name="title">Test</ac:parameter>');
+	});
+
+	it('converts a <details> block with no <summary> to an expand macro with no title parameter', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('<details>\nHidden text.\n</details>', 'note.md', createContext());
+
+		expect(html).toContain('<ac:structured-macro ac:name="expand">');
+		expect(html).not.toContain('ac:parameter');
+		expect(html).toContain('Hidden text');
+	});
+
+	it('keeps an unterminated <details> block as literal text instead of crashing', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('<details>\nNo closing tag here.', 'note.md', createContext());
+
+		expect(html).not.toContain('<ac:structured-macro ac:name="expand">');
+		expect(html).toContain('details');
+		expect(html).toContain('No closing tag here.');
 	});
 
 	it('converts fenced code blocks to Confluence code macros', async () => {

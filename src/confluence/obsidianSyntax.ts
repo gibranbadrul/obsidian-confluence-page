@@ -59,10 +59,12 @@ export function preprocessObsidianSyntax(md: string, ctx: ObsidianPreprocessCont
 	// 2. [[link|alias]] / [[link]] -> Confluence link when the target note has confluence_url.
 	s = replaceObsidianPageLinks(s, ctx);
 
-	// 3. Callout header: `> [!info] Title` -> private marker.
+	// 3. Callout header: `> [!info] Title` / `> [!info]- Title` -> private marker. The optional `-`/`+`
+	// fold marker (Obsidian's native foldable-callout syntax) is carried through so the renderer can turn
+	// any foldable callout into a Confluence expand section, regardless of its icon type.
 	// PUA markers avoid markdown-it treats underscores as emphasis syntax.
-	s = s.replace(/^(> )\[!([a-zA-Z]+)\](.*)$/gm, (_full, prefix: string, type: string, rest: string) => {
-		return `${prefix}CALLOUT:${type.toUpperCase()}${rest}`;
+	s = s.replace(/^(> )\[!([a-zA-Z]+)\]([-+])?(.*)$/gm, (_full, prefix: string, type: string, fold: string | undefined, rest: string) => {
+		return `${prefix}CALLOUT:${type.toUpperCase()}${fold ?? ''}${rest}`;
 	});
 
 	return restore(s);

@@ -35,6 +35,10 @@
 * [Not converted yet](#not-converted-yet)
 * [Internal macros](#internal-macros)
 * [Image attributes](#image-attributes)
+    * [Editor toolbar](#editor-toolbar)
+* [Callouts](#callouts)
+    * [Collapsible callouts](#collapsible-callouts)
+    * [`<details>` blocks](#details-blocks)
 * [Attachment publishing](#attachment-publishing)
 * [Diagram rendering](#diagram-rendering)
 * [Settings](#settings)
@@ -252,7 +256,7 @@ Creating a root page directly from a space key is planned. New pages currently r
 | Indented code blocks                        | Confluence code macros                                                 |
 | Obsidian wikilinks                          | Confluence link when the target note is bound; readable text otherwise |
 | Obsidian wikilink aliases                   | Same resolution with the alias used as link text                       |
-| Obsidian callouts                           | Confluence structured macros                                           |
+| Obsidian callouts                           | See [Callouts](#callouts) for details                                  |
 | Local Markdown images                       | Confluence attachments                                                 |
 | Obsidian image embeds                       | Confluence attachments                                                 |
 | Remote images                               | Remote image URLs                                                      |
@@ -261,8 +265,6 @@ Creating a root page directly from a space key is planned. New pages currently r
 | Mermaid blocks                              | Rendered image attachment when enabled                                 |
 | PlantUML blocks                             | Rendered image attachment when enabled                                 |
 | Internal Macros                             | See [Internal macros](#internal-macros) for details                    |
-
-Most callout types map to the similarly-named Confluence panel (`[!warning]` → warning panel, `[!tip]` → tip panel, etc.). `[!expand]` is the one exception — it produces a collapsible expand section instead of a panel.
 
 ## Not converted yet
 
@@ -276,7 +278,7 @@ Most callout types map to the similarly-named Confluence panel (`[!warning]` →
 | Math / LaTeX            | Kept as plain text                                                                  |
 | Tags                    | Kept as text; Confluence labels are planned                                         |
 | Note transclusion       | Not inlined yet                                                                     |
-| Raw HTML                | Escaped / not executed                                                              |
+| Raw HTML                | Escaped / not executed, except `<details>` — see [`<details>` blocks](#details-blocks) |
 | Definition lists        | Kept as regular text                                                                |
 | Supplementary emoji     | Replaced with stable placeholders for Confluence compatibility                      |
 
@@ -319,6 +321,60 @@ Toggle it off in Settings → Interface → **Show image attributes toolbar**.
 | Border color      | `\|cpp-border-color-light`, `\|cpp-border-color-medium`, `\|cpp-border-color-dark` | `ac:border="true"` + Confluence Cloud border color (see caveat below)     |
 | Caption           | `\|cpp-caption:A visible caption`                                                  | `<ac:caption>` child element (see caveat below)                           |
 | Combined          | `\|cpp-w-300\|cpp-h-200\|cpp-border-bold\|cpp-right`                               | all of the above together                                                 |
+
+## Callouts
+
+Obsidian callouts (`> [!type] Title`) become Confluence structured macros. Most types map to the similarly-named panel:
+
+| Callout type(s)                     | Confluence panel |
+|--------------------------------------|-------------------|
+| `note`, `info`, `tip`, `hint`        | Info              |
+| `warning`, `caution`, `attention`    | Warning           |
+| `danger`, `error`, `failure`, `bug`  | Note              |
+| `success`, `check`, `done`           | Tip               |
+| anything else                        | Info (default)    |
+
+### Collapsible callouts
+
+Fold any callout with Obsidian's own `-`/`+` marker and it becomes a collapsible expand section instead of a panel, regardless of type — Confluence's colored panels have no collapse option, only its expand macro does, so foldability always wins:
+
+```text
+> [!note]- Click to expand
+> Hidden details — lists, code blocks, anything goes.
+```
+
+```xml
+<ac:structured-macro ac:name="expand">
+  <ac:parameter ac:name="title">Click to expand</ac:parameter>
+  <ac:rich-text-body>Hidden details — lists, code blocks, anything goes.</ac:rich-text-body>
+</ac:structured-macro>
+```
+
+The type still picks the icon/color when a callout isn't folded; fold it and that's traded away for a plain expand toggle instead. This isn't limited to a specific type — `[!warning]-`, `[!tip]+`, even an unrecognized type like `[!quote]-`, all produce the same expand section. The title line (`Click to expand`) becomes a real `ac:parameter`, same as `<details><summary>` below, so it stays visible on the toggle while the section is collapsed.
+
+### `<details>` blocks
+
+`<details><summary>Title</summary>...</details>` also becomes an expand macro — each tag alone on its own line, `<summary>` optional:
+
+```text
+<details>
+<summary>Click to expand</summary>
+
+Hidden text, lists, or code blocks go here.
+
+</details>
+```
+
+```xml
+<ac:structured-macro ac:name="expand">
+  <ac:parameter ac:name="title">Click to expand</ac:parameter>
+  <ac:rich-text-body>Hidden text, lists, or code blocks go here.</ac:rich-text-body>
+</ac:structured-macro>
+```
+
+Same title behavior as a folded callout above — the body is parsed as ordinary Markdown, not treated as opaque HTML.
+
+This is the one deliberate exception to "raw HTML is escaped, not executed" (see [What gets converted](#what-gets-converted)) — `<details>` specifically is recognized and converted, nothing else is. It works for publishing regardless of how the note looks in Obsidian itself: Obsidian's own renderer doesn't parse Markdown inside raw HTML blocks by default, so a note with unrendered lists/code inside a `<details>` fold is a known Obsidian limitation, not something this plugin can fix. Install a community plugin such as [Details Markdown](https://obsidian.md/plugins?id=details-markdown) if you also want that content to render properly while reading the note in Obsidian — either way, publishing to Confluence produces the same expand macro.
 
 ## Attachment publishing
 
@@ -462,7 +518,7 @@ Here is what it does:
 - New page creation requires an existing parent page URL, or a folder URL on Confluence Cloud
 - Root page creation from `confluence_space_key` is planned
 - Task lists, footnotes, math, tags-to-labels, and note transclusion are planned
-- Raw HTML is not executed
+- Raw HTML is not executed, except `<details>` (see [`<details>` blocks](#details-blocks))
 - Mobile Obsidian is not supported
 
 ## Development

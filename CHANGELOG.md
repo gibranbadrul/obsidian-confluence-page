@@ -1,5 +1,19 @@
 [![image](assets/obsidian-confluence-page-banner.png)](https://github.com/gibranbadrul/obsidian-confluence-page)
 
+## [1.2.0](https://github.com/gibranbadrul/obsidian-confluence-page/compare/1.1.0..1.2.0) - 2026-08-27
+
+### ⛰️  Features
+
+- *(confluence)* Support collapsible expand sections ([#17](<REPO>/issues/17)) - ([72f4f9f](https://github.com/gibranbadrul/obsidian-confluence-page/commit/72f4f9f0282c5a1052038d48f23fe6048fe552da))
+- *(confluence)* Add an image attributes toolbar ([#16](<REPO>/issues/16)) - ([e7aff04](https://github.com/gibranbadrul/obsidian-confluence-page/commit/e7aff040fcd5feaba0486a19c6d2b203ad267d78))
+- *(confluence)* Support image attribute modifiers ([#14](<REPO>/issues/14)) - ([8ebf45a](https://github.com/gibranbadrul/obsidian-confluence-page/commit/8ebf45a3ed8b48317e180c34b7f61d061c452a75))
+- *(confluence)* Support toc macro ([#11](<REPO>/issues/11)) - ([9f826e2](https://github.com/gibranbadrul/obsidian-confluence-page/commit/9f826e271d1073c1ac619936c4b2ee3807796eb0))
+
+### 🚜 Refactor
+
+- Tidy-up codebase - ([0a78cbe](https://github.com/gibranbadrul/obsidian-confluence-page/commit/0a78cbec8fc5d4f08a04429212560868042b3309))
+
+
 ## [1.1.0](https://github.com/gibranbadrul/obsidian-confluence-page/compare/1.0.2..1.1.0) - 2026-08-04
 
 ### ⛰️  Features
@@ -23,6 +37,7 @@
 
 ### ⚙️ Miscellaneous Tasks
 
+- *(release)* Bump version to 1.1.0 - ([567c838](https://github.com/gibranbadrul/obsidian-confluence-page/commit/567c8388a90a8129c23e9a329af5203c6f8c4a1e))
 - Add Makefile - ([d4962c0](https://github.com/gibranbadrul/obsidian-confluence-page/commit/d4962c09aacfd9f80189793efff273fb4f29ca44))
 
 

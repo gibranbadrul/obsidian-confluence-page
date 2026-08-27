@@ -1,4 +1,4 @@
-import { addIcon, type App, Menu, setIcon, setTooltip } from 'obsidian';
+import { addIcon, Menu, setIcon, setTooltip } from 'obsidian';
 import { RangeSetBuilder, StateField } from '@codemirror/state';
 import type { EditorState, Extension } from '@codemirror/state';
 import { Decoration, type DecorationSet, EditorView, WidgetType } from '@codemirror/view';
@@ -310,7 +310,7 @@ class ImageAttributesToolbarWidget extends WidgetType {
 	private sizePanel: AnchoredPanel | null = null;
 	private captionPanel: AnchoredPanel | null = null;
 
-	constructor(private app: App, private embed: ImageEmbedMatch, private lineFrom: number) { super(); }
+	constructor(private embed: ImageEmbedMatch, private lineFrom: number) { super(); }
 
 	eq(other: ImageAttributesToolbarWidget): boolean {
 		return this.lineFrom === other.lineFrom
@@ -429,7 +429,7 @@ class ImageAttributesToolbarWidget extends WidgetType {
  * naturally shows the toolbar only for the image being interacted with and hides it everywhere else,
  * without needing to detect clicks/hovers on Obsidian's own rendering directly.
  */
-function buildDecorations(state: EditorState, app: App, isEnabled: () => boolean): DecorationSet {
+function buildDecorations(state: EditorState, isEnabled: () => boolean): DecorationSet {
 	if (!isEnabled()) return Decoration.none;
 
 	const cursor = state.selection.main.head;
@@ -441,16 +441,16 @@ function buildDecorations(state: EditorState, app: App, isEnabled: () => boolean
 
 	const builder = new RangeSetBuilder<Decoration>();
 	builder.add(activeLine.to, activeLine.to, Decoration.widget({
-		widget: new ImageAttributesToolbarWidget(app, embed, activeLine.from),
+		widget: new ImageAttributesToolbarWidget(embed, activeLine.from),
 		block: true,
 		side: 1,
 	}));
 	return builder.finish();
 }
 
-function buildDecorationsSafely(state: EditorState, app: App, isEnabled: () => boolean): DecorationSet {
+function buildDecorationsSafely(state: EditorState, isEnabled: () => boolean): DecorationSet {
 	try {
-		return buildDecorations(state, app, isEnabled);
+		return buildDecorations(state, isEnabled);
 	} catch (e) {
 		console.error('[confluence-image-toolbar] failed to build decorations', e);
 		return Decoration.none;
@@ -464,10 +464,10 @@ function buildDecorationsSafely(state: EditorState, app: App, isEnabled: () => b
  * plugins` if it's tried via ViewPlugin. isEnabled is re-read on every document/selection change, so a
  * settings toggle takes effect on the next edit or cursor move without reloading.
  */
-export function imageAttributesToolbarExtension(app: App, isEnabled: () => boolean): Extension {
+export function imageAttributesToolbarExtension(isEnabled: () => boolean): Extension {
 	return StateField.define<DecorationSet>({
-		create: (state) => buildDecorationsSafely(state, app, isEnabled),
-		update: (value, tr) => (tr.docChanged || tr.selection) ? buildDecorationsSafely(tr.state, app, isEnabled) : value,
+		create: (state) => buildDecorationsSafely(state, isEnabled),
+		update: (value, tr) => (tr.docChanged || tr.selection) ? buildDecorationsSafely(tr.state, isEnabled) : value,
 		provide: (field) => EditorView.decorations.from(field),
 	});
 }

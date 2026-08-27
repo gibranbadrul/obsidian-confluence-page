@@ -18,6 +18,8 @@ import {
 	parseImageAttributes,
 	postProcessHtml,
 	renderAcCode,
+	renderAcExpandClose,
+	renderAcExpandOpen,
 	renderAcImage,
 	renderAcToc,
 	tryDecode,
@@ -226,6 +228,7 @@ export class MarkdownConverter {
 			const calloutType = detectCalloutType(tokens, idx);
 			if (calloutType) {
 				(env as CalloutEnv).__calloutOpen = true;
+				if (calloutType.macro === 'expand') return renderAcExpandOpen(calloutType.title);
 				return `<ac:structured-macro ac:name="${calloutType.macro}"><ac:rich-text-body>`;
 			}
 			return originalBlockquoteOpen
@@ -260,6 +263,52 @@ export class MarkdownConverter {
 			return true;
 		});
 		md.renderer.rules.confluence_toc = () => renderAcToc();
+
+		// expand: `<details>` / `<summary>title</summary>` / `</details>`, each alone on its own line,
+		// becomes a Confluence expand macro. The body between them is tokenized as ordinary nested
+		// Markdown (state.md.block.tokenize, the same mechanism blockquotes use for their own content),
+		// not treated as opaque HTML — lists, code blocks, nested `<details>`, all render normally.
+		// Falls through to plain (escaped) text if `</details>` is never found, same as any other
+		// unmatched block-level syntax.
+		// `alt` registers this rule to interrupt an in-progress paragraph/blockquote/list (the same way
+		// markdown-it's own fence/heading rules do) — without it, a `<details>` with no blank line before
+		// it just gets swallowed as a lazy-continuation line of whatever text precedes it.
+		md.block.ruler.before('paragraph', 'confluence_expand', (state, startLine, endLine, silent) => {
+			const lineText = (line: number): string => {
+				const pos = state.bMarks[line]! + state.tShift[line]!;
+				const max = state.eMarks[line]!;
+				return state.src.slice(pos, max);
+			};
+
+			if (lineText(startLine).trim().toLowerCase() !== '<details>') return false;
+			if (silent) return true;
+
+			let bodyStart = startLine + 1;
+			let title = '';
+			if (bodyStart < endLine) {
+				const summaryMatch = lineText(bodyStart).trim().match(/^<summary>([\s\S]*?)<\/summary>$/i);
+				if (summaryMatch) {
+					title = summaryMatch[1]!.trim();
+					bodyStart += 1;
+				}
+			}
+
+			let closeLine = -1;
+			for (let line = bodyStart; line < endLine; line++) {
+				if (lineText(line).trim().toLowerCase() === '</details>') { closeLine = line; break; }
+			}
+			if (closeLine === -1) return false;
+
+			const openToken = state.push('confluence_expand_open', '', 1);
+			openToken.meta = { title };
+			state.md.block.tokenize(state, bodyStart, closeLine);
+			state.push('confluence_expand_close', '', -1);
+
+			state.line = closeLine + 1;
+			return true;
+		}, { alt: ['paragraph', 'blockquote', 'list'] });
+		md.renderer.rules.confluence_expand_open = (tokens, idx) => renderAcExpandOpen((tokens[idx]!.meta as { title: string }).title);
+		md.renderer.rules.confluence_expand_close = () => renderAcExpandClose();
 
 		return md;
 	}

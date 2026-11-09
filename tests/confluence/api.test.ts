@@ -75,3 +75,49 @@ describe('ConfluenceApi attachment uploads', () => {
 		expect(requestBodyText()).toContain('Content-Disposition: form-data; name="minorEdit"\r\n\r\ntrue');
 	});
 });
+
+describe('ConfluenceApi wide images', () => {
+	beforeEach(() => requestUrlMock.mockReset());
+
+	it('publishes a marked image with its wide layout and pixel width and restores alt text', async () => {
+		const image = (alt: string) => ({
+			type: 'mediaSingle',
+			attrs: { layout: 'center', width: 1200, widthType: 'pixel' },
+			content: [{ type: 'media', attrs: { id: 'file-id', alt } }],
+		});
+		const ordinaryImage = image('Ordinary image');
+		requestUrlMock
+			.mockResolvedValueOnce({ status: 200, text: '{"asyncId":"task-id"}' })
+			.mockResolvedValueOnce({
+				status: 200,
+				text: JSON.stringify({
+					value: JSON.stringify({ type: 'doc', version: 1, content: [image('marker'), ordinaryImage] }),
+				}),
+			})
+			.mockResolvedValueOnce({ status: 200 });
+		const api = createApi();
+		const storageXhtml = '<ac:image ac:alt="marker" />';
+		const adf = await api.convertWideImages('123', storageXhtml, new Map([['marker', { alt: 'Architecture', width: '1300' }]]));
+		await api.updatePage('123', { title: 'Test', storageXhtml, newVersion: 2, adf });
+
+		expect(requestUrlMock.mock.calls[0]?.[0].url).toContain('/convert/async/atlas_doc_format?contentIdContext=123');
+		const update = requestUrlMock.mock.calls[2]?.[0];
+		expect(update.url).toContain('/api/v2/pages/123');
+		expect(JSON.parse(update.body).body).toEqual({ representation: 'atlas_doc_format', value: adf });
+		expect(JSON.parse(adf).content).toEqual([
+			{ ...image('Architecture'), attrs: { layout: 'wide', width: 1300, widthType: 'pixel' } },
+			ordinaryImage,
+		]);
+	});
+
+	it('fails before publishing if conversion loses a wide image marker', async () => {
+		requestUrlMock
+			.mockResolvedValueOnce({ status: 200, text: '{"asyncId":"task-id"}' })
+			.mockResolvedValueOnce({
+				status: 200,
+				text: JSON.stringify({ value: '{"type":"doc","version":1,"content":[]}' }),
+			});
+		await expect(createApi().convertWideImages('123', '', new Map([['marker', { alt: 'Architecture', width: '1300' }]])))
+			.rejects.toThrow('could not identify every wide image');
+	});
+});

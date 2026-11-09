@@ -349,6 +349,19 @@ describe('MarkdownConverter', () => {
 		expect(alignedHtml).toContain('<ac:image ac:align="center">');
 	});
 
+	it('marks a standalone wide attachment for ADF conversion', async () => {
+		const converter = new MarkdownConverter(createApp([new TFile('assets/image.png')]));
+		const wideImagesByMarker = new Map<string, { alt: string; width?: string }>();
+		const html = await converter.convert('![[assets/image.png|Diagram|cpp-wide]]', 'note.md', createContext({
+			attachedFilenames: new Set(['image.png']),
+			wideImagesByMarker,
+		}));
+
+		expect([...wideImagesByMarker.values()]).toEqual([{ alt: 'Diagram' }]);
+		const [marker] = wideImagesByMarker.keys();
+		expect(html.trim()).toBe(`<ac:image ac:alt="${marker}" ac:align="center"><ri:attachment ri:filename="image.png" /></ac:image>`);
+	});
+
 	it('emits ac:layout="wrap-left"/"wrap-right" for the wrap modifier, and drops it for center align', async () => {
 		const image = new TFile('assets/image.png');
 		const converter = new MarkdownConverter(createApp([image]));
@@ -440,8 +453,9 @@ describe('MarkdownConverter', () => {
 			attachedFilenames: new Set(refs.attachments.map((ref) => ref.filename)),
 		}));
 
-		expect(html).toContain('<ac:image ac:alt="A caption" ac:width="300" ac:height="200" ac:align="center" ac:border="true">');
+		expect(html).toContain('<ac:image ac:alt="A caption" ac:width="300" ac:height="200" ac:align="center" ac:layout="center" ac:custom-width="true" ac:border="true">');
 		expect(html).toContain('<ac:adf-mark key="border" size="3" color="#091e4224" />');
+		expect(html.trim()).toMatch(/^<ac:image.*<\/ac:image>$/);
 	});
 
 	it('keeps a bare (unprefixed) keyword as literal alt text instead of a modifier', async () => {

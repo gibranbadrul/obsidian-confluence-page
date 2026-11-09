@@ -79,7 +79,7 @@ export function renderAcExpandClose(): string {
 	return `</ac:rich-text-body></ac:structured-macro>`;
 }
 
-export type ImageAlign = 'left' | 'center' | 'right';
+export type ImageAlign = 'left' | 'center' | 'right' | 'wide';
 export type ImageBorderSize = 'subtle' | 'medium' | 'bold';
 export type ImageBorderColor = 'light' | 'medium' | 'dark';
 
@@ -113,7 +113,7 @@ export interface ImageAttributes {
  * alt text collides with a modifier keyword (alt text starting with "cpp-" is effectively never intentional).
  */
 const PREFIX = 'cpp-';
-const IMAGE_ALIGN_RE = new RegExp(`^${PREFIX}(left|center|right)$`);
+const IMAGE_ALIGN_RE = new RegExp(`^${PREFIX}(left|center|right|wide)$`);
 const IMAGE_WRAP_TOKEN = `${PREFIX}wrap`;
 const IMAGE_BORDER_TOKEN = `${PREFIX}border`;
 const IMAGE_BORDER_SIZE_TOKENS: Record<string, ImageBorderSize> = {
@@ -209,11 +209,12 @@ export function renderAcImage(filename: string, attrs: ImageAttributes): string 
 	const widthPart = attrs.width ? ` ac:width="${escapeAttr(attrs.width)}"` : '';
 	const heightPart = attrs.height ? ` ac:height="${escapeAttr(attrs.height)}"` : '';
 	const alignPart = attrs.align ? ` ac:align="${attrs.align}"` : '';
-	// Confluence models "wrap text around the image" as a distinct ac:layout value paired with ac:align,
-	// not a standalone flag — center has no wrap equivalent, so it's a no-op there.
-	const layoutPart = attrs.wrap && (attrs.align === 'left' || attrs.align === 'right')
-		? ` ac:layout="wrap-${attrs.align}"`
-		: '';
+	let layoutPart = '';
+	if (attrs.align === 'center' && attrs.width) {
+		layoutPart = ' ac:layout="center" ac:custom-width="true"';
+	} else if (attrs.wrap && (attrs.align === 'left' || attrs.align === 'right')) {
+		layoutPart = ` ac:layout="wrap-${attrs.align}"`;
+	}
 	const borderPart = attrs.border ? ` ac:border="true"` : '';
 	// The ac:border attribute alone renders a plain border everywhere. The ac:adf-mark child additionally
 	// requests the sized/colored Confluence Cloud border style; unsupported targets (Server/Data Center, or a

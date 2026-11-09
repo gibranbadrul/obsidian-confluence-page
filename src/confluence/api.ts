@@ -44,6 +44,7 @@ export interface FolderInfo {
 export interface UpdatePagePayload {
 	title: string;
 	storageXhtml: string;
+	adf?: string;
 	newVersion: number;
 }
 
@@ -207,8 +208,76 @@ export class ConfluenceApi {
 		});
 	}
 
+	async convertWideImages(pageId: string, storageXhtml: string, markers: ReadonlyMap<string, { alt: string; width?: string }>): Promise<string> {
+		const context = 'Converting wide images to Confluence Cloud ADF';
+		const conversionUrl = `${this.baseUrl}/rest/api/contentbody/convert/async`;
+		const started = await this.request({
+			method: 'POST',
+			url: `${conversionUrl}/atlas_doc_format?contentIdContext=${encodeURIComponent(pageId)}`,
+			contentType: 'application/json',
+			body: JSON.stringify({ representation: 'storage', value: storageXhtml }),
+		});
+		const id = readRequiredString(parseJsonObject(started.text, context), 'asyncId', context);
+		for (let attempt = 0; attempt < 30; attempt++) {
+			if (attempt > 0) await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
+			const response = await this.request({
+				method: 'GET',
+				url: `${conversionUrl}/${encodeURIComponent(id)}`,
+			});
+			const result = parseJsonObject(response.text, context);
+			if (result.status === 'FAILED' || result.status === 'CANCELLED') {
+				throw new ConfluenceApiError(500, 'invalid_response', `${context}: conversion failed`);
+			}
+			if (typeof result.value !== 'string' || !result.value) continue;
+
+			const adf = parseJsonObject(result.value, context);
+			const remaining = new Map(markers);
+			for (const node of readRecordArray(adf, 'content')) {
+				if (node.type !== 'mediaSingle') continue;
+				const media = readRecordArray(node, 'content')[0];
+				if (media?.type !== 'media') continue;
+				const attrs = readOptionalObject(media, 'attrs');
+				if (!attrs || typeof attrs.alt !== 'string') continue;
+				const image = remaining.get(attrs.alt);
+				if (!image) continue;
+
+				remaining.delete(attrs.alt);
+				attrs.alt = image.alt;
+				const layout = readOptionalObject(node, 'attrs') ?? {};
+				delete layout.width;
+				delete layout.widthType;
+				layout.layout = 'wide';
+				if (image.width) {
+					layout.width = Number(image.width);
+					layout.widthType = 'pixel';
+				}
+				node.attrs = layout;
+			}
+			if (adf.type !== 'doc' || remaining.size > 0) {
+				throw new ConfluenceApiError(500, 'invalid_response', `${context}: could not identify every wide image in the converted page`);
+			}
+			return JSON.stringify(adf);
+		}
+		throw new ConfluenceApiError(500, 'invalid_response', `${context}: conversion timed out`);
+	}
+
 	/** PUT updates a page. 409 is mapped to version_conflict so callers can retry. */
 	async updatePage(pageId: string, payload: UpdatePagePayload): Promise<void> {
+		if (payload.adf !== undefined) {
+			await this.request({
+				method: 'PUT',
+				url: `${this.baseUrl}/api/v2/pages/${encodeURIComponent(pageId)}`,
+				contentType: 'application/json',
+				body: JSON.stringify({
+					id: pageId,
+					status: 'current',
+					title: payload.title,
+					version: { number: payload.newVersion },
+					body: { representation: 'atlas_doc_format', value: payload.adf },
+				}),
+			});
+			return;
+		}
 		const body = JSON.stringify({
 			id: pageId,
 			type: 'page',

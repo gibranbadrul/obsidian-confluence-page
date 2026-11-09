@@ -31,6 +31,7 @@ const ALIGN_BUTTONS: ReadonlyArray<{ align: ImageAlign; icon: string; labelKey: 
 	{ align: 'left', icon: 'text-align-start', labelKey: 'alignLeft' },
 	{ align: 'center', icon: 'text-align-center', labelKey: 'alignCenter' },
 	{ align: 'right', icon: 'text-align-end', labelKey: 'alignRight' },
+	{ align: 'wide', icon: 'move-horizontal', labelKey: 'alignWide' },
 ];
 
 /** A square with two corner resize handles. */
@@ -87,11 +88,13 @@ const BORDER_COLOR_OPTIONS: ReadonlyArray<{ labelKey: string; borderColor: Image
 ];
 
 /** Icon-only button with an Obsidian-native hover tooltip. */
-function makeIconButton(icon: string, title: string, onClick: (evt: MouseEvent) => void, active = false): HTMLButtonElement {
-	return createEl('button', { cls: 'confluence-image-toolbar-icon-button', attr: { type: 'button' } }, (btn) => {
+function makeIconButton(icon: string, title: string, onClick: (evt: MouseEvent) => void, active?: boolean): HTMLButtonElement {
+	return createEl('button', { cls: 'confluence-image-toolbar-icon-button', attr: { type: 'button', 'aria-label': title } }, (btn) => {
 		setTooltip(btn, title);
 		if (active) btn.addClass('is-active');
+		if (active !== undefined) btn.setAttribute('aria-pressed', String(active));
 		setIcon(btn, icon);
+		btn.querySelector('svg')?.setAttribute('aria-hidden', 'true');
 		btn.addEventListener('mousedown', (evt) => evt.preventDefault());
 		btn.addEventListener('click', (evt) => {
 			evt.stopPropagation();

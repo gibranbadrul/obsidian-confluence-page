@@ -309,18 +309,23 @@ Toggle it off in Settings → Interface → **Show image attributes toolbar**.
 ![[diagram.png|A caption describing the diagram|cpp-w-300|cpp-h-200|cpp-border-bold|cpp-center]]
 ```
 
-| Modifier          | Example                                                                            | Result                                                                    |
-|-------------------|------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
-| Width             | `\|cpp-w-300`                                                                      | `ac:width="300"`                                                          |
-| Height            | `\|cpp-h-200`                                                                      | `ac:height="200"`                                                         |
-| Width and height  | `\|cpp-w-300\|cpp-h-200`                                                           | `ac:width="300" ac:height="200"`                                          |
-| Alignment         | `\|cpp-left`, `\|cpp-center`, `\|cpp-right`                                        | `ac:align="..."`                                                          |
-| Wrap              | `\|cpp-left\|cpp-wrap`, `\|cpp-right\|cpp-wrap`                                    | `ac:align="..."` + `ac:layout="wrap-left"`/`"wrap-right"`                 |
-| Border            | `\|cpp-border`                                                                     | `ac:border="true"`                                                        |
-| Border thickness  | `\|cpp-border-subtle`, `\|cpp-border-medium`, `\|cpp-border-bold`                  | `ac:border="true"` + Confluence Cloud border thickness (see caveat below) |
-| Border color      | `\|cpp-border-color-light`, `\|cpp-border-color-medium`, `\|cpp-border-color-dark` | `ac:border="true"` + Confluence Cloud border color (see caveat below)     |
-| Caption           | `\|cpp-caption:A visible caption`                                                  | `<ac:caption>` child element (see caveat below)                           |
-| Combined          | `\|cpp-w-300\|cpp-h-200\|cpp-border-bold\|cpp-right`                               | all of the above together                                                 |
+| Modifier                | Example                                                                      | Result                                                                    |
+|-------------------------|------------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| Width                   | `cpp-w-300`                                                                  | `ac:width="300"`                                                          |
+| Height                  | `cpp-h-200`                                                                  | `ac:height="200"`                                                         |
+| Width and height        | `cpp-w-300\|cpp-h-200`                                                       | `ac:width="300" ac:height="200"`                                          |
+| Alignment               | `cpp-left`, `cpp-center`, `cpp-right`                                        | `ac:align="..."`                                                          |
+| Wide (Confluence Cloud) | `cpp-wide`, `cpp-wide\|cpp-w-1300`                                           | Wide media layout with an optional pixel width                            |
+| Wrap                    | `cpp-left\|cpp-wrap`, `cpp-right\|cpp-wrap`                                  | `ac:align="..."` + `ac:layout="wrap-left"` or `"wrap-right"`              |
+| Border                  | `cpp-border`                                                                 | `ac:border="true"`                                                        |
+| Border thickness        | `cpp-border-subtle`, `cpp-border-medium`, `cpp-border-bold`                  | `ac:border="true"` + Confluence Cloud border thickness (see caveat below) |
+| Border color            | `cpp-border-color-light`, `cpp-border-color-medium`, `cpp-border-color-dark` | `ac:border="true"` + Confluence Cloud border color (see caveat below)     |
+| Caption                 | `cpp-caption:A visible caption`                                              | `<ac:caption>` child element (see caveat below)                           |
+| Combined                | `cpp-w-300\|cpp-h-200\|cpp-border-bold\|cpp-right`                           | 300 × 200 px, bold border, right alignment                                |
+
+Select **Wide** in the toolbar or put `![[diagram.png|cpp-wide]]` on its own line. The image
+extends into both page margins. Confluence uses its Wide preset unless you set a custom width
+through **Image Size** or a modifier such as `cpp-w-1300`.
 
 ## Callouts
 

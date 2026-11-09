@@ -174,7 +174,7 @@ export class MarkdownConverter {
 		return map;
 	}
 
-	private buildRenderer(ctx: ConvertContext, fenceHashes: Map<string, string>): MarkdownIt {
+	private buildRenderer(ctx: ConvertContext, fenceHashes: Map<string, string>) {
 		// xhtmlOut keeps void elements XHTML-compatible for Confluence Storage.
 		const md = new MarkdownIt({ html: false, xhtmlOut: true, breaks: false, linkify: true });
 		const wideImageBlocks = new WeakSet<object>();
@@ -207,7 +207,7 @@ export class MarkdownConverter {
 		// The alt segment doubles as size/align/border hints; see parseImageAttributes for the syntax.
 		md.renderer.rules.image = (tokens, idx) => {
 			const token = tokens[idx]!;
-			const src = token.attrGet('src') ?? '';
+			const src = String(token.attrGet('src') ?? '');
 			const attrs = parseImageAttributes(token.content || '');
 			if (/^[a-z][a-z0-9+\-.]*:\/\//i.test(src) || src.startsWith('data:')) {
 				// align/border are Confluence ac:image-only attributes; remote <img> tags only get resized.
@@ -243,7 +243,7 @@ export class MarkdownConverter {
 
 				const attrs = parseImageAttributes(image.content);
 				if (attrs.align !== 'wide' && !(attrs.align === 'center' && attrs.width)) continue;
-				const src = image.attrGet('src') ?? '';
+				const src = String(image.attrGet('src') ?? '');
 				if (/^[a-z][a-z0-9+\-.]*:\/\//i.test(src) || src.startsWith('data:')) continue;
 				const filename = tryDecode(src).split('/').pop() ?? '';
 				if (!ctx.attachedFilenames.has(filename)) continue;

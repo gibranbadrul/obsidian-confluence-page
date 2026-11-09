@@ -29,12 +29,14 @@ export class AnchoredPanel {
 	open(opts: AnchoredPanelOptions): void {
 		if (this.el) return;
 
+		const doc = opts.anchor.ownerDocument;
+		const view = doc.defaultView ?? window;
 		const panel = opts.build();
 		panel.addClass('confluence-image-anchored-panel', 'confluence-image-anchored-panel-measuring');
-		document.body.appendChild(panel);
+		doc.body.appendChild(panel);
 		this.el = panel;
 
-		const reposition = (): void => this.place(opts.anchor, panel);
+		const reposition = (): void => this.place(opts.anchor, panel, view);
 		reposition();
 		panel.removeClass('confluence-image-anchored-panel-measuring');
 
@@ -45,26 +47,26 @@ export class AnchoredPanel {
 		const onKeyDown = (evt: KeyboardEvent): void => {
 			if (evt.key === 'Escape') { evt.preventDefault(); this.close(opts.onClose); }
 		};
-		document.addEventListener('mousedown', onDocMouseDown, true);
-		document.addEventListener('keydown', onKeyDown, true);
-		window.addEventListener('resize', reposition);
-		window.addEventListener('scroll', reposition, true);
+		doc.addEventListener('mousedown', onDocMouseDown, true);
+		doc.addEventListener('keydown', onKeyDown, true);
+		view.addEventListener('resize', reposition);
+		view.addEventListener('scroll', reposition, true);
 
 		this.cleanup = [
-			() => document.removeEventListener('mousedown', onDocMouseDown, true),
-			() => document.removeEventListener('keydown', onKeyDown, true),
-			() => window.removeEventListener('resize', reposition),
-			() => window.removeEventListener('scroll', reposition, true),
+			() => doc.removeEventListener('mousedown', onDocMouseDown, true),
+			() => doc.removeEventListener('keydown', onKeyDown, true),
+			() => view.removeEventListener('resize', reposition),
+			() => view.removeEventListener('scroll', reposition, true),
 		];
 	}
 
-	private place(anchor: HTMLElement, panel: HTMLElement): void {
+	private place(anchor: HTMLElement, panel: HTMLElement, view: Window): void {
 		const a = anchor.getBoundingClientRect();
-		const maxLeft = window.innerWidth - panel.offsetWidth - VIEWPORT_MARGIN;
-		const maxTop = window.innerHeight - panel.offsetHeight - VIEWPORT_MARGIN;
+		const maxLeft = view.innerWidth - panel.offsetWidth - VIEWPORT_MARGIN;
+		const maxTop = view.innerHeight - panel.offsetHeight - VIEWPORT_MARGIN;
 
 		let top = a.bottom + PANEL_OFFSET;
-		if (top + panel.offsetHeight > window.innerHeight - VIEWPORT_MARGIN) {
+		if (top + panel.offsetHeight > view.innerHeight - VIEWPORT_MARGIN) {
 			const above = a.top - PANEL_OFFSET - panel.offsetHeight;
 			if (above >= VIEWPORT_MARGIN) top = above;
 		}

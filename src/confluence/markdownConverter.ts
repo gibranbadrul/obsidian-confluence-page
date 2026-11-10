@@ -43,6 +43,7 @@ export interface ExtractedReferences {
 interface CalloutEnv { __calloutOpen?: boolean }
 
 export interface ConvertContext {
+	wideImagesByMarker?: Map<string, { alt: string; width?: string }>;
 	/** filename -> successfully uploaded attachment records. Used by the image renderer. */
 	attachedFilenames: Set<string>;
 	/** hash -> successfully uploaded Mermaid PNG filename. */
@@ -173,9 +174,10 @@ export class MarkdownConverter {
 		return map;
 	}
 
-	private buildRenderer(ctx: ConvertContext, fenceHashes: Map<string, string>): MarkdownIt {
+	private buildRenderer(ctx: ConvertContext, fenceHashes: Map<string, string>) {
 		// xhtmlOut keeps void elements XHTML-compatible for Confluence Storage.
 		const md = new MarkdownIt({ html: false, xhtmlOut: true, breaks: false, linkify: true });
+		const wideImageBlocks = new WeakSet<object>();
 
 		// fence: code blocks and diagrams.
 		md.renderer.rules.fence = (tokens, idx) => {
@@ -205,7 +207,7 @@ export class MarkdownConverter {
 		// The alt segment doubles as size/align/border hints; see parseImageAttributes for the syntax.
 		md.renderer.rules.image = (tokens, idx) => {
 			const token = tokens[idx]!;
-			const src = token.attrGet('src') ?? '';
+			const src = String(token.attrGet('src') ?? '');
 			const attrs = parseImageAttributes(token.content || '');
 			if (/^[a-z][a-z0-9+\-.]*:\/\//i.test(src) || src.startsWith('data:')) {
 				// align/border are Confluence ac:image-only attributes; remote <img> tags only get resized.
@@ -216,10 +218,42 @@ export class MarkdownConverter {
 			const decoded = tryDecode(src);
 			const filename = decoded.split('/').pop() ?? decoded;
 			if (ctx.attachedFilenames.has(filename)) {
+				if (attrs.align === 'wide') {
+					const markers = ctx.wideImagesByMarker;
+					if (!markers || !wideImageBlocks.has(token)) {
+						throw new Error('Wide images must be uploaded attachments on their own line.');
+					}
+					const marker = `cpp-wide-${crypto.randomUUID()}`;
+					markers.set(marker, { alt: attrs.alt, width: attrs.width });
+					return renderAcImage(filename, { ...attrs, align: 'center', alt: marker });
+				}
 				return renderAcImage(filename, attrs);
 			}
 			return `<!-- Missing uploaded attachment: ${escapeAttr(filename)} -->`;
 		};
+
+		md.core.ruler.after('inline', 'confluence_centered_image_block', ({ tokens }) => {
+			for (let i = 1; i < tokens.length - 1; i++) {
+				const open = tokens[i - 1]!;
+				const inline = tokens[i]!;
+				const close = tokens[i + 1]!;
+				if (open.type !== 'paragraph_open' || open.level !== 0 || close.type !== 'paragraph_close') continue;
+				const image = inline.children?.[0];
+				if (inline.children?.length !== 1 || image?.type !== 'image') continue;
+
+				const attrs = parseImageAttributes(image.content);
+				if (attrs.align !== 'wide' && !(attrs.align === 'center' && attrs.width)) continue;
+				const src = String(image.attrGet('src') ?? '');
+				if (/^[a-z][a-z0-9+\-.]*:\/\//i.test(src) || src.startsWith('data:')) continue;
+				const filename = tryDecode(src).split('/').pop() ?? '';
+				if (!ctx.attachedFilenames.has(filename)) continue;
+
+				// Confluence stores centered media as its own block.
+				if (attrs.align === 'wide') wideImageBlocks.add(image);
+				open.hidden = true;
+				close.hidden = true;
+			}
+		});
 
 		// callout: custom blockquote rendering.
 		const originalBlockquoteOpen = md.renderer.rules.blockquote_open;

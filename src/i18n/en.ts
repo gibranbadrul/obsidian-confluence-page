@@ -229,6 +229,7 @@ export const en = {
 		borderColorDark: 'Dark',
 		alignLeft: 'Left',
 		alignCenter: 'Center',
+		alignWide: 'Wide (Confluence Cloud)',
 		alignRight: 'Right',
 		wrapLeft: 'Wrap left',
 		wrapRight: 'Wrap right',

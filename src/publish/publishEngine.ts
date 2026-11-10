@@ -198,7 +198,9 @@ export class PublishEngine {
 				...Object.keys(mermaidRecords),
 				...Object.keys(plantUmlRecords),
 			]);
+			const wideImagesByMarker = new Map<string, { alt: string; width?: string }>();
 			const ctx: ConvertContext = {
+				wideImagesByMarker,
 				attachedFilenames: allAttachedFilenames,
 				mermaidFilenameByHash,
 				plantUmlFilenameByHash,
@@ -208,7 +210,10 @@ export class PublishEngine {
 			const storageXhtml = await this.converter.convert(markdown, path, ctx);
 
 			// The title is resolved from the configured frontmatter property, then falls back to the note filename.
-			await this.updatePageWithConflictRetry(pageId, path, pageTitle, storageXhtml, page.version);
+			const adf = wideImagesByMarker.size
+				? await this.deps.api.convertWideImages(pageId, storageXhtml, wideImagesByMarker)
+				: undefined;
+			await this.updatePageWithConflictRetry(pageId, path, pageTitle, storageXhtml, page.version, adf);
 
 			const mergedAttachments: Record<string, AttachmentRecord> = {
 				...previousAttachments,
@@ -333,10 +338,10 @@ export class PublishEngine {
 	}
 
 	/** Updates a page, retrying once with a refreshed version number if Confluence reports a version conflict. */
-	private async updatePageWithConflictRetry(pageId: string, path: string, pageTitle: string, storageXhtml: string, currentVersion: number): Promise<void> {
+	private async updatePageWithConflictRetry(pageId: string, path: string, pageTitle: string, storageXhtml: string, currentVersion: number, adf?: string): Promise<void> {
 		try {
 			this.deps.logger.info(`Updating Confluence page: ${path}`, `pageId=${pageId} version=${currentVersion + 1}`);
-			await this.deps.api.updatePage(pageId, { title: pageTitle, storageXhtml, newVersion: currentVersion + 1 });
+			await this.deps.api.updatePage(pageId, { title: pageTitle, storageXhtml, adf, newVersion: currentVersion + 1 });
 			this.deps.logger.info(`Confluence page updated: ${path}`, `pageId=${pageId} version=${currentVersion + 1}`);
 		} catch (e) {
 			if (!(e instanceof ConfluenceApiError) || e.code !== 'version_conflict') throw e;
@@ -344,7 +349,7 @@ export class PublishEngine {
 			this.deps.logger.warn(`Version conflict; refetching page before retry: ${path}`, `pageId=${pageId}`);
 			const refreshed = await this.deps.api.getPage(pageId);
 			this.deps.logger.info(`Retrying Confluence page update: ${path}`, `pageId=${pageId} version=${refreshed.version + 1}`);
-			await this.deps.api.updatePage(pageId, { title: pageTitle, storageXhtml, newVersion: refreshed.version + 1 });
+			await this.deps.api.updatePage(pageId, { title: pageTitle, storageXhtml, adf, newVersion: refreshed.version + 1 });
 			this.deps.logger.info(`Confluence page updated after retry: ${path}`, `pageId=${pageId} version=${refreshed.version + 1}`);
 		}
 	}

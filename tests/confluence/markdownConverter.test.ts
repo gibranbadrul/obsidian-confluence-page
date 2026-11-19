@@ -41,6 +41,32 @@ describe('MarkdownConverter', () => {
 		expect(html).not.toContain('confluence_url');
 	});
 
+	it('converts Markdown task lists to Confluence tasks with their completion state', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('- [ ] todo item\n- [x] done item', 'note.md', createContext());
+
+		expect(html).toContain('<ac:task-list>');
+		expect(html).toContain('<ac:task-id>1</ac:task-id>');
+		expect(html).toContain('<ac:task-status>incomplete</ac:task-status>');
+		expect(html).toContain('<ac:task-body>todo item</ac:task-body>');
+		expect(html).toContain('<ac:task-id>2</ac:task-id>');
+		expect(html).toContain('<ac:task-status>complete</ac:task-status>');
+		expect(html).toContain('<ac:task-body>done item</ac:task-body>');
+		expect(html).not.toContain('[ ]');
+		expect(html).not.toContain('[x]');
+	});
+
+	it('preserves ordinary list items and checkbox markers in mixed lists', async () => {
+		const converter = new MarkdownConverter(createApp());
+		const html = await converter.convert('- [ ] todo item\n- regular item\n- [x] done item', 'note.md', createContext());
+
+		expect(html).toContain('<ac:task-list>');
+		expect(html).toContain('<ac:task-status>incomplete</ac:task-status>');
+		expect(html).toContain('<li>regular item</li>');
+		expect(html).toContain('<ac:task-status>complete</ac:task-status>');
+		expect(html.match(/<ac:task-list>/g)).toHaveLength(2);
+	});
+
 	it('removes internal ignore line and ignore block macros before rendering', async () => {
 		const converter = new MarkdownConverter(createApp());
 		const html = await converter.convert([

@@ -42,6 +42,15 @@ export interface ExtractedReferences {
 /** markdown-it env is typed as `any`; this converter only stores a callout state flag. */
 interface CalloutEnv { __calloutOpen?: boolean }
 
+interface TaskListTokenMeta {
+	taskStatus?: 'complete' | 'incomplete';
+	renderTask?: boolean;
+	taskList?: boolean;
+	mixed?: boolean;
+	opensRun?: boolean;
+	closesRun?: boolean;
+}
+
 export interface ConvertContext {
 	wideImagesByMarker?: Map<string, { alt: string; width?: string }>;
 	/** filename -> successfully uploaded attachment records. Used by the image renderer. */
@@ -178,6 +187,97 @@ export class MarkdownConverter {
 		// xhtmlOut keeps void elements XHTML-compatible for Confluence Storage.
 		const md = new MarkdownIt({ html: false, xhtmlOut: true, breaks: false, linkify: true });
 		const wideImageBlocks = new WeakSet<object>();
+		let taskId = 0;
+
+		// Capture GFM task markers before rendering and remove them from task bodies.
+		md.core.ruler.after('inline', 'confluence_task_lists', ({ tokens }) => {
+			const lists: Array<{ token: (typeof tokens)[number]; items: Array<(typeof tokens)[number]> }> = [];
+			const itemStack: Array<(typeof tokens)[number]> = [];
+			for (const token of tokens) {
+				if (token.type === 'bullet_list_open' || token.type === 'ordered_list_open') {
+					lists.push({ token, items: [] });
+				} else if (token.type === 'list_item_open') {
+					lists[lists.length - 1]?.items.push(token);
+					itemStack.push(token);
+				} else if (token.type === 'list_item_close') {
+					itemStack.pop();
+				} else if (token.type === 'inline') {
+					const item = itemStack[itemStack.length - 1];
+					if (!item || token.level !== item.level + 2) continue;
+					const match = token.content.match(/^\[([ xX])\]\s+/);
+					if (!match) continue;
+					const itemMeta = (item.meta ??= {}) as TaskListTokenMeta;
+					itemMeta.taskStatus = match[1]!.toLowerCase() === 'x' ? 'complete' : 'incomplete';
+					token.content = token.content.slice(match[0].length);
+					const firstChild = token.children?.[0];
+					if (firstChild?.type === 'text') firstChild.content = firstChild.content.slice(match[0].length);
+				} else if (token.type === 'bullet_list_close' || token.type === 'ordered_list_close') {
+					const list = lists.pop();
+					if (!list) continue;
+					const tasks = list.items.map((item) => Boolean((item.meta as TaskListTokenMeta | undefined)?.taskStatus));
+					const taskCount = tasks.filter(Boolean).length;
+					const mixed = taskCount > 0 && taskCount < tasks.length;
+					const split = mixed && list.token.type === 'bullet_list_open';
+					const listMeta = (list.token.meta ??= {}) as TaskListTokenMeta;
+					listMeta.mixed = split;
+					const taskList = taskCount === tasks.length && taskCount > 0;
+					listMeta.taskList = taskList;
+					for (let index = 0; index < list.items.length; index++) {
+						const meta = (list.items[index]!.meta ??= {}) as TaskListTokenMeta;
+						if (!meta.taskStatus) continue;
+						meta.renderTask = taskList || split;
+						if (split) {
+							meta.mixed = true;
+							meta.opensRun = index === 0 || !tasks[index - 1];
+							meta.closesRun = index === tasks.length - 1 || !tasks[index + 1];
+						}
+					}
+					if (split) {
+						for (let index = 0; index < list.items.length; index++) {
+							if (tasks[index]) continue;
+							const meta = list.items[index]!.meta as TaskListTokenMeta;
+							meta.mixed = true;
+							meta.opensRun = index === 0 || tasks[index - 1];
+							meta.closesRun = index === tasks.length - 1 || tasks[index + 1];
+						}
+					}
+					list.token.meta = { ...listMeta };
+					token.meta = { ...listMeta };
+				}
+			}
+		});
+
+		for (const type of ['bullet_list_open', 'bullet_list_close', 'ordered_list_open', 'ordered_list_close'] as const) {
+			md.renderer.rules[type] = (tokens, idx, options, _env, self) => {
+				const token = tokens[idx]!;
+				const meta = token.meta as TaskListTokenMeta | undefined;
+				if (meta?.mixed) return '';
+				if (meta?.taskList) return type.endsWith('_open') ? '<ac:task-list>\n' : '</ac:task-list>\n';
+				return self.renderToken(tokens, idx, options);
+			};
+		}
+
+		md.renderer.rules.list_item_open = (tokens, idx, options, _env, self) => {
+			const token = tokens[idx]!;
+			const meta = token.meta as TaskListTokenMeta | undefined;
+			if (!meta?.taskStatus || !meta.renderTask) {
+				const marker = meta?.taskStatus === 'complete' ? '[x] ' : meta?.taskStatus === 'incomplete' ? '[ ] ' : '';
+				const prefix = meta?.mixed && meta.opensRun ? '<ul>\n' : '';
+				return prefix + self.renderToken(tokens, idx, options) + marker;
+			}
+			taskId++;
+			const prefix = meta.mixed && meta.opensRun ? '<ac:task-list>\n' : '';
+			return `${prefix}<ac:task>\n<ac:task-id>${taskId}</ac:task-id>\n<ac:task-status>${meta.taskStatus}</ac:task-status>\n<ac:task-body>`;
+		};
+		md.renderer.rules.list_item_close = (tokens, idx, options, _env, self) => {
+			const token = tokens[idx]!;
+			const item = [...tokens.slice(0, idx)].reverse().find((candidate) => candidate.type === 'list_item_open' && candidate.level === token.level);
+			const meta = item?.meta as TaskListTokenMeta | undefined;
+			if (meta?.taskStatus && meta.renderTask) return `</ac:task-body>\n</ac:task>${meta.mixed && meta.closesRun ? '\n</ac:task-list>' : ''}\n`;
+			const parentList = [...tokens.slice(0, idx)].reverse().find((candidate) => candidate.type === 'bullet_list_open' && candidate.level < token.level);
+			const listMeta = parentList?.meta as TaskListTokenMeta | undefined;
+			return self.renderToken(tokens, idx, options) + (listMeta?.mixed && item?.meta && (item.meta as TaskListTokenMeta).closesRun ? '</ul>\n' : '');
+		};
 
 		// fence: code blocks and diagrams.
 		md.renderer.rules.fence = (tokens, idx) => {
